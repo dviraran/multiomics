@@ -34,29 +34,51 @@ run_foundational_analysis <- function(mae_data, config) {
   fc <- get_foundational_config(config)
 
   # 1. Cross-omics feature correlations
-  results$feature_correlations <- compute_crossomics_feature_correlations(
-    harmonized, mae_data$gene_mapping, fc, config
+  results$feature_correlations <- tryCatch(
+    compute_crossomics_feature_correlations(harmonized, mae_data$gene_mapping, fc, config),
+    error = function(e) {
+      log_message("WARNING: Feature correlation analysis failed: ", conditionMessage(e))
+      NULL
+    }
   )
 
   # 2. Sample-level concordance
-  results$sample_concordance <- compute_sample_concordance(
-    harmonized, mae_data$metadata, fc, config
+  results$sample_concordance <- tryCatch(
+    compute_sample_concordance(harmonized, mae_data$metadata, fc, config),
+    error = function(e) {
+      log_message("WARNING: Sample concordance analysis failed: ", conditionMessage(e))
+      NULL
+    }
   )
 
   # 3. Pathway overlap analysis
-  results$pathway_overlap <- analyze_pathway_overlap(
-    harmonized, mae_data$gene_mapping, fc, config
+  results$pathway_overlap <- tryCatch(
+    analyze_pathway_overlap(harmonized, mae_data$gene_mapping, fc, config),
+    error = function(e) {
+      log_message("WARNING: Pathway overlap analysis failed: ", conditionMessage(e))
+      NULL
+    }
   )
 
   # 4. Cross-omics module detection (if enabled)
   if (fc$module_detection) {
-    results$crossomics_modules <- find_crossomics_modules(
-      harmonized, mae_data$gene_mapping, fc, config
+    results$crossomics_modules <- tryCatch(
+      find_crossomics_modules(harmonized, mae_data$gene_mapping, fc, config),
+      error = function(e) {
+        log_message("WARNING: Module detection failed: ", conditionMessage(e))
+        NULL
+      }
     )
   }
 
   # Generate summary
-  results$summary <- summarize_foundational_results(results, config)
+  results$summary <- tryCatch(
+    summarize_foundational_results(results, config),
+    error = function(e) {
+      log_message("WARNING: Summary generation failed: ", conditionMessage(e))
+      list(status = "partial", error = conditionMessage(e))
+    }
+  )
 
   log_message("=== Foundational Analysis Complete ===")
   return(results)
@@ -163,6 +185,26 @@ compute_crossomics_feature_correlations <- function(harmonized, gene_mapping, fc
     save_pairwise_correlation_results(pair_result, pair_name, config)
 
     results[[pair_name]] <- pair_result
+  }
+
+  # Check if we have any results
+  pair_names <- setdiff(names(results), "summary")
+  if (length(pair_names) == 0) {
+    log_message("No cross-omics correlations could be computed.")
+    return(list(
+      summary = data.frame(
+        pair = character(),
+        omics1 = character(),
+        omics2 = character(),
+        n_features = integer(),
+        n_samples = integer(),
+        mean_correlation = numeric(),
+        median_correlation = numeric(),
+        n_significant = integer(),
+        pct_positive = numeric(),
+        stringsAsFactors = FALSE
+      )
+    ))
   }
 
   # Create summary

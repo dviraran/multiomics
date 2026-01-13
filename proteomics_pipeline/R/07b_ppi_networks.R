@@ -46,9 +46,40 @@ run_ppi_network_analysis <- function(da_results, normalized_data, config) {
   sig_threshold <- ppi_config$significance_threshold %||% 0.05
   lfc_threshold <- ppi_config$lfc_threshold %||% 0
 
+  # Handle case where da_results might be a list (from limma output)
+  if (is.list(da_results) && !is.data.frame(da_results)) {
+    # Try to extract the data frame from common structures
+    if ("table" %in% names(da_results)) {
+      da_results <- da_results$table
+    } else if (length(da_results) > 0 && is.data.frame(da_results[[1]])) {
+      da_results <- da_results[[1]]
+    } else {
+      log_message("WARNING: Could not extract data frame from da_results. Skipping PPI analysis.")
+      return(NULL)
+    }
+  }
+
+  # Check for required columns
+  if (!is.data.frame(da_results)) {
+    log_message("WARNING: da_results is not a data frame. Skipping PPI analysis.")
+    return(NULL)
+  }
+
+  # Map column names (handle different naming conventions)
+  if (!"padj" %in% colnames(da_results) && "adj.P.Val" %in% colnames(da_results)) {
+    da_results$padj <- da_results$adj.P.Val
+  }
+  if (!"log2FoldChange" %in% colnames(da_results) && "logFC" %in% colnames(da_results)) {
+    da_results$log2FoldChange <- da_results$logFC
+  }
+  if (!"protein_id" %in% colnames(da_results)) {
+    # Use row names as protein IDs
+    da_results$protein_id <- rownames(da_results)
+  }
+
   sig_proteins <- da_results %>%
-    filter(padj < sig_threshold, abs(log2FoldChange) > lfc_threshold) %>%
-    pull(protein_id)
+    dplyr::filter(padj < sig_threshold, abs(log2FoldChange) > lfc_threshold) %>%
+    dplyr::pull(protein_id)
 
   log_message("  Found ", length(sig_proteins), " significant proteins for network analysis")
 

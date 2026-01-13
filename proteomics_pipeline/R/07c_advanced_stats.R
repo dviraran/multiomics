@@ -147,8 +147,41 @@ compute_effect_sizes_with_ci <- function(normalized_data, metadata, da_results, 
   log_message("  Bootstrap iterations: ", n_boot)
   log_message("  CI level: ", ci_level)
 
+  # Handle case where da_results might be a list
+  if (is.list(da_results) && !is.data.frame(da_results)) {
+    if ("table" %in% names(da_results)) {
+      da_results <- da_results$table
+    } else if (length(da_results) > 0 && is.data.frame(da_results[[1]])) {
+      da_results <- da_results[[1]]
+    } else {
+      log_message("WARNING: Could not extract data frame from da_results. Skipping effect size calculation.")
+      return(NULL)
+    }
+  }
+
+  # Ensure protein_id column exists
+  if (!"protein_id" %in% colnames(da_results)) {
+    da_results$protein_id <- rownames(da_results)
+  }
+
+  # Map column names if needed
+  if (!"log2FoldChange" %in% colnames(da_results) && "logFC" %in% colnames(da_results)) {
+    da_results$log2FoldChange <- da_results$logFC
+  }
+  if (!"pvalue" %in% colnames(da_results) && "P.Value" %in% colnames(da_results)) {
+    da_results$pvalue <- da_results$P.Value
+  }
+  if (!"padj" %in% colnames(da_results) && "adj.P.Val" %in% colnames(da_results)) {
+    da_results$padj <- da_results$adj.P.Val
+  }
+
   # Get protein list from DA results
   proteins <- da_results$protein_id
+
+  if (is.null(proteins) || length(proteins) == 0) {
+    log_message("WARNING: No proteins found in DA results. Skipping effect size calculation.")
+    return(NULL)
+  }
 
   # Compute effect sizes in parallel
   if (requireNamespace("parallel", quietly = TRUE)) {

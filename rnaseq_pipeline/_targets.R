@@ -199,7 +199,8 @@ list(
       bc <- pipeline_config$batch_correction %||% list()
       if (bc$detect_batch %||% TRUE) {
         run_batch_analysis(
-          dds = dds_normalized,
+          vst_counts = vst_counts,
+          counts_filtered = counts_filtered,
           metadata = metadata_validated,
           config = pipeline_config
         )
