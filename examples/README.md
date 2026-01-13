@@ -253,7 +253,18 @@ multiomics_pipeline/
 
 3. **Missing packages**: Install required Bioconductor packages
    ```r
-   BiocManager::install(c("DESeq2", "limma", "fgsea", "MOFA2", "mixOmics"))
+   # Core packages for all pipelines
+   BiocManager::install(c("DESeq2", "limma", "fgsea", "vsn"))
+
+   # Additional packages for multi-omics integration
+   BiocManager::install(c(
+     "MultiAssayExperiment",  # Multi-omics data structure
+     "MOFA2",                 # Multi-Omics Factor Analysis
+     "mixOmics",              # DIABLO integration
+     "SNFtool",               # Similarity Network Fusion
+     "ComplexHeatmap",        # Visualization
+     "circlize"               # Circular plots
+   ))
    ```
 
 4. **API errors for commentary**: Set environment variables in R

@@ -23,7 +23,11 @@ source("R/05_feature_selection.R")
 source("R/06_mofa.R")
 source("R/07_diablo.R")
 source("R/08_snf.R")
+source("R/05b_foundational_correlations.R")
+source("R/05c_mechanistic_inference.R")
 source("R/09_concordance.R")
+source("R/09b_integration_consensus.R")  # NEW: Method comparison
+source("R/09c_stability_analysis.R")     # NEW: Bootstrap stability
 source("R/10_enrichment.R")
 source("R/11_commentary.R")
 
@@ -110,6 +114,40 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # FOUNDATIONAL CROSS-OMICS ANALYSIS (runs BEFORE integration methods)
+  # ---------------------------------------------------------------------------
+  # These analyses establish basic understanding of cross-omics relationships
+  # before running advanced integration methods like MOFA/DIABLO/SNF
+
+  # Cross-omics correlations, sample concordance, pathway overlap
+  tar_target(
+    name = foundational_results,
+    command = {
+      fc <- config$foundational %||% list()
+      if (fc$run_foundational %||% TRUE) {
+        run_foundational_analysis(mae_data, config)
+      } else {
+        log_message("Foundational analysis disabled in config. Skipping.")
+        NULL
+      }
+    }
+  ),
+
+  # Mechanistic inference (regulatory networks, mediation, TF activity)
+  tar_target(
+    name = mechanistic_results,
+    command = {
+      mc <- config$mechanistic %||% list()
+      if (mc$run_mechanistic %||% TRUE) {
+        run_mechanistic_analysis(mae_data, foundational_results, config)
+      } else {
+        log_message("Mechanistic analysis disabled in config. Skipping.")
+        NULL
+      }
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
   # Integration Methods
   # ---------------------------------------------------------------------------
 
@@ -191,6 +229,47 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # Integration Consensus Analysis (NEW)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    name = consensus_results,
+    command = {
+      cc <- config$consensus %||% list()
+      if (cc$compare_methods %||% TRUE) {
+        run_integration_consensus(
+          integration_results = integration_results,
+          mae_data = mae_data,
+          config = config
+        )
+      } else {
+        log_message("Consensus analysis disabled in config. Skipping.")
+        NULL
+      }
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
+  # Stability Analysis (NEW)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    name = stability_results,
+    command = {
+      sc <- config$stability %||% list()
+      if (sc$run_stability %||% TRUE) {
+        run_stability_analysis(
+          mae_data = mae_data,
+          feature_data = feature_data,
+          integration_results = integration_results,
+          config = config
+        )
+      } else {
+        log_message("Stability analysis disabled in config. Skipping.")
+        NULL
+      }
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
   # Figure Commentary Generation
   # ---------------------------------------------------------------------------
 
@@ -199,9 +278,13 @@ list(
     name = figures_tbl,
     command = build_figures_table(
       mae_data = mae_data,
+      foundational_results = foundational_results,
+      mechanistic_results = mechanistic_results,
       integration_results = integration_results,
       concordance_results = concordance_results,
       enrichment_results = enrichment_results,
+      consensus_results = consensus_results,
+      stability_results = stability_results,
       config = config
     )
   ),
@@ -213,8 +296,12 @@ list(
       figures_tbl = figures_tbl,
       config = config,
       mae_data = mae_data,
+      foundational_results = foundational_results,
+      mechanistic_results = mechanistic_results,
       integration_results = integration_results,
       concordance_results = concordance_results,
+      consensus_results = consensus_results,
+      stability_results = stability_results,
       output_dir = file.path(config$output$output_dir, "commentary")
     )
   ),
@@ -248,6 +335,8 @@ list(
         integration_methods_run = names(integration_results)[!sapply(integration_results, is.null)],
         mae_summary = mae_summary,
         feature_selection = feature_data$selection_summary,
+        foundational_summary = if (!is.null(foundational_results)) foundational_results$summary else NULL,
+        mechanistic_summary = if (!is.null(mechanistic_results)) mechanistic_results$summary else NULL,
         commentary = commentary_tbl
       )
 

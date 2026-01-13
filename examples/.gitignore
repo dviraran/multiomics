@@ -1,0 +1,5 @@
+# Downloaded/generated data
+data/
+
+# Pipeline run outputs
+pipeline_run_summary.csv

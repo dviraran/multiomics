@@ -47,6 +47,8 @@ source("R/04_normalization.R")
 source("R/05_imputation.R")
 source("R/06_qc.R")
 source("R/07_differential.R")
+source("R/07b_ppi_networks.R")      # NEW: PPI network analysis
+source("R/07c_advanced_stats.R")    # NEW: Advanced statistical methods
 source("R/08_pathway.R")
 source("R/09_commentary.R")
 
@@ -134,6 +136,59 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # PPI Network Analysis (NEW)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    ppi_results,
+    {
+      ppi_config <- config$ppi_analysis %||% list()
+      if (ppi_config$run_ppi %||% TRUE) {
+        run_ppi_network_analysis(
+          da_results = de_results$results[[1]],  # Use first contrast
+          normalized_data = imputed_data$matrix,
+          config = config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  tar_target(
+    ppi_network_csv,
+    {
+      if (!is.null(ppi_results) && !is.null(ppi_results$network$edges)) {
+        out_path <- file.path(config$output$output_dir, "ppi_network.csv")
+        write.csv(ppi_results$network$edges, out_path, row.names = FALSE)
+        out_path
+      } else {
+        NULL
+      }
+    },
+    format = "file"
+  ),
+
+  # ---------------------------------------------------------------------------
+  # Advanced Statistical Analysis (NEW)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    advanced_stats,
+    {
+      stats_config <- config$advanced_stats %||% list()
+      if (stats_config$run_advanced_stats %||% TRUE) {
+        run_advanced_stats(
+          normalized_data = imputed_data$matrix,
+          metadata = imputed_data$metadata,
+          da_results = de_results$results[[1]],
+          config = config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
   # Figure Commentary Generation
   # ---------------------------------------------------------------------------
 
@@ -144,6 +199,8 @@ list(
       qc_results = qc_results,
       de_results = de_results,
       pathway_results = pathway_results,
+      ppi_results = ppi_results,
+      advanced_stats = advanced_stats,
       config = config
     )
   ),
@@ -157,6 +214,8 @@ list(
       qc_results = qc_results,
       de_results = de_results,
       imputed_data = imputed_data,
+      ppi_results = ppi_results,
+      advanced_stats = advanced_stats,
       output_dir = file.path(config$output$output_dir, "commentary")
     )
   ),
@@ -189,6 +248,8 @@ list(
       qc = qc_results,
       differential = de_results,
       pathway = pathway_results,
+      ppi = ppi_results,
+      advanced_stats = advanced_stats,
       commentary = commentary_tbl
     )
   ),

@@ -1,280 +1,83 @@
-# =============================================================================
-# Proteomics Pipeline Configuration
-# =============================================================================
-# This file contains all parameters for the mass-spec proteomics analysis pipeline.
-# Modify these settings according to your experimental design.
-
-# -----------------------------------------------------------------------------
-# Input Files (Required)
-# -----------------------------------------------------------------------------
 input:
-  # Path to quantification matrix (CSV or TSV)
-  # Rows = features (proteins/peptides), Columns = samples, Values = intensities
-  quant_matrix: "data/example_quant_matrix.csv"
-
-  # Path to sample metadata file
-  # Must contain sample identifiers matching quant_matrix column names
-  metadata: "data/example_metadata.csv"
-
-  # Type of feature identifiers in the quant_matrix
-
-  # Options: "protein_accession", "uniprot", "gene_symbol", "peptide_sequence", "custom"
-  feature_id_type: "uniprot"
-
-  # Feature level: "protein" or "peptide"
-  feature_level: "protein"
-
-  # Organism name (used for annotation databases)
-  # Examples: "Homo sapiens", "Mus musculus", "Saccharomyces cerevisiae"
-  organism: "Homo sapiens"
-
-  # Column in metadata containing sample identifiers
-  sample_id_column: "sample_id"
-
-# -----------------------------------------------------------------------------
-# Optional Input Files
-# -----------------------------------------------------------------------------
+  quant_matrix: ../examples/data/nci60/prot_intensity_matrix.csv
+  metadata: ../examples/data/nci60/metadata.csv
+  feature_id_type: uniprot
+  feature_level: protein
+  organism: Homo sapiens
+  sample_id_column: sample_id
 optional_inputs:
-  # Custom ID mapping file (important for non-model organisms)
-  # Should have columns: feature_id, gene_symbol, entrez_id, protein_name
-  mapping_file: null  # e.g., "data/id_mapping.csv"
-
-  # FASTA file for additional annotation (rarely needed)
-  fasta_file: null
-
-  # Contaminants file (list of accessions/patterns to remove)
-  # If null, uses built-in MaxQuant-style contaminant patterns
-  contaminants_file: null
-
-  # Custom gene sets for pathway analysis (GMT format)
-  # Essential for non-model organisms without database support
-  gene_set_gmt: null  # e.g., "data/custom_pathways.gmt"
-
-# -----------------------------------------------------------------------------
-# Experimental Design
-# -----------------------------------------------------------------------------
+  mapping_file: ~
+  fasta_file: ~
+  contaminants_file: ~
+  gene_set_gmt: ~
 design:
-  # Main grouping variable in metadata (for differential analysis)
-  condition_column: "condition"
-
-  # Design formula for differential analysis
-  # Use ~ condition for simple designs
-  # Use ~ batch + condition for batch correction
-  design_formula: "~ condition"
-
-  # Contrasts for differential analysis
-  # Format: "numerator - denominator" or "condition_A - condition_B"
-  # Multiple contrasts supported
+  condition_column: condition
+  design_formula: ~ condition
   contrasts:
-    - "treated - control"
-    # - "timepoint_24h - timepoint_0h"
-    # - "drug_A - vehicle"
-
-  # Reference level for the condition (denominator in fold changes)
-  reference_level: "control"
-
-  # Optional batch variable for visualization and correction
-  batch_column: null  # e.g., "batch"
-
-# -----------------------------------------------------------------------------
-# Data Processing Parameters
-# -----------------------------------------------------------------------------
+  - solid - hematological
+  reference_level: hematological
+  batch_column: ~
 processing:
-  # Treat zeros as missing values (recommended for most MS data)
-  zeros_as_na: true
-
-  # Log2 transform the data (set false if already log-transformed)
-  log_transform: true
-
-  # Normalization method
-  # Options: "vsn" (recommended), "median", "quantile", "cyclicloess", "none"
-  normalization_method: "vsn"
-
-# -----------------------------------------------------------------------------
-# Filtering Parameters
-# -----------------------------------------------------------------------------
+  zeros_as_na: yes
+  log_transform: yes
+  normalization_method: median
 filtering:
-  # Minimum proportion of samples a feature must be present in (globally)
-  # Set to 0 to disable global filter
   global_min_presence: 0.5
-
-  # Minimum proportion of samples within at least one condition group
-  # This is the primary filter for differential analysis
   group_min_presence: 0.7
-
-  # Remove features in the lowest intensity quantile (0 = no filter)
-  # e.g., 0.05 removes bottom 5% by mean intensity
   low_intensity_quantile: 0
-
-  # Contaminant removal patterns (in addition to contaminants_file)
   contaminant_patterns:
-    - "CON__"
-    - "REV__"
-    - "^DECOY_"
-    - "HUMAN_CONTAM"
-
-# -----------------------------------------------------------------------------
-# Missing Value Imputation
-# -----------------------------------------------------------------------------
+  - CON__
+  - REV__
+  - ^DECOY_
+  - HUMAN_CONTAM
 imputation:
-  # Imputation method
-  # Options: "QRILC" (recommended for MNAR), "MinProb", "MinDet",
-  #          "knn", "random_forest", "none"
-  method: "QRILC"
-
-  # Parameters for MinProb/MinDet imputation
-  # Quantile for minimum probability (typically 0.01)
+  method: QRILC
   min_prob_quantile: 0.01
-
-  # Tune parameter for MinProb (fraction of SD to use)
   tune_sigma: 1
-
-# -----------------------------------------------------------------------------
-# Quality Control Parameters
-# -----------------------------------------------------------------------------
 qc:
-  # PCA: number of components to compute
   n_pca_components: 10
-
-  # Outlier detection: number of standard deviations for flagging
   outlier_sd_threshold: 3
-
-  # Minimum correlation with other samples (Pearson)
   min_sample_correlation: 0.8
-
-  # Generate UMAP in addition to PCA
-  run_umap: true
-
-  # UMAP parameters
+  run_umap: yes
   umap_n_neighbors: 15
   umap_min_dist: 0.1
-
-# -----------------------------------------------------------------------------
-# Differential Analysis Parameters
-# -----------------------------------------------------------------------------
 differential:
-  # Statistical method
-  # Options: "limma" (recommended), "limma_trend"
-  method: "limma"
-
-  # Adjusted p-value threshold for significance
+  method: limma
   adj_pvalue_threshold: 0.05
-
-  # Log2 fold change threshold for significance (absolute value)
   log2fc_threshold: 1
-
-  # Apply independent hypothesis weighting (IHW)
-  use_ihw: false
-
-# -----------------------------------------------------------------------------
-# Pathway Analysis Parameters
-# -----------------------------------------------------------------------------
+  use_ihw: no
 pathway:
-  # Run pathway analysis
-  run_pathway_analysis: true
-
-  # Gene set databases to use (if organism is supported)
-  # Options: "GO", "KEGG", "Reactome", "MSigDB"
+  run_pathway_analysis: yes
   databases:
-    - "GO"
-    - "KEGG"
-
-  # GO ontologies to include
-  # Options: "BP" (Biological Process), "MF" (Molecular Function), "CC" (Cellular Component)
+  - GO
+  - KEGG
   go_ontologies:
-    - "BP"
-    - "MF"
-
-  # Method for ORA (over-representation analysis)
-  # FDR threshold for selecting significant proteins
+  - BP
+  - MF
   ora_pvalue_threshold: 0.05
-
-  # Minimum and maximum gene set sizes
   min_set_size: 10
   max_set_size: 500
-
-  # Number of permutations for GSEA
   gsea_nperm: 10000
-
-  # Ranking metric for GSEA
-  # Options: "t_statistic", "log2fc", "signed_pvalue"
-  gsea_ranking: "t_statistic"
-
-# -----------------------------------------------------------------------------
-# Duplicate Feature Handling
-# -----------------------------------------------------------------------------
+  gsea_ranking: t_statistic
 duplicates:
-  # Strategy for handling duplicate feature IDs
-  # Options: "keep_most_complete", "aggregate_median", "aggregate_mean", "keep_first"
-  strategy: "keep_most_complete"
-
-# -----------------------------------------------------------------------------
-# Output Settings
-# -----------------------------------------------------------------------------
+  strategy: keep_most_complete
 output:
-  # Output directory
-  output_dir: "outputs"
-
-  # Report format
-  # Options: "html", "pdf", "both"
-  report_format: "html"
-
-  # Include interactive plots in HTML report
-  interactive_plots: true
-
-  # Figure dimensions (inches)
+  output_dir: outputs
+  report_format: html
+  interactive_plots: yes
   fig_width: 10
   fig_height: 8
-
-  # DPI for saved plots
   plot_dpi: 300
-
-# -----------------------------------------------------------------------------
-# Annotation Database Settings
-# -----------------------------------------------------------------------------
 annotation:
-  # UniProt database for ID mapping
-  # Options: "UniProt.ws", "biomaRt", "AnnotationHub", "local"
-  mapping_service: "UniProt.ws"
-
-  # BioMart dataset (if using biomaRt)
-  # Examples: "hsapiens_gene_ensembl", "mmusculus_gene_ensembl"
-  biomart_dataset: "hsapiens_gene_ensembl"
-
-  # Timeout for web service queries (seconds)
+  mapping_service: UniProt.ws
+  biomart_dataset: hsapiens_gene_ensembl
   query_timeout: 300
-
-  # Chunk size for batch queries
   query_chunk_size: 500
-
-# -----------------------------------------------------------------------------
-# Figure Commentary Settings
-# -----------------------------------------------------------------------------
 commentary:
-  # Enable AI-generated figure commentary
-  # When enabled, the pipeline will analyze figures and generate descriptions
-  enabled: true
-
-  # Commentary backend
-  # Options:
-  #   - "claude": Use Claude Vision API (requires ANTHROPIC_API_KEY env var)
-  #   - "openai": Use OpenAI GPT-4 Vision API (requires OPENAI_API_KEY env var)
-  #   - "none": Use data-driven fallback (no LLM, deterministic)
-  backend: "none"
-
-  # Claude model for vision analysis (only used when backend is "claude")
-  # Recommended: claude-sonnet-4-20250514 (good balance of quality and cost)
-  # Alternative: claude-opus-4-20250514 (highest quality, higher cost)
-  claude_model: "claude-sonnet-4-20250514"
-
-  # OpenAI model for vision analysis (only used when backend is "openai")
-  # Recommended: gpt-4o (best vision capabilities)
-  # Alternative: gpt-4o-mini (faster, cheaper)
-  openai_model: "gpt-4o"
-
-  # Maximum tokens for commentary response
+  enabled: yes
+  backend: none
+  claude_model: claude-sonnet-4-20250514
+  openai_model: gpt-4o
   max_tokens: 1500
-
-  # Retry settings for API calls
   max_retries: 2
   retry_delay: 5

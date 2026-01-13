@@ -1,11 +1,18 @@
 # _targets.R
 # Main targets pipeline for RNA-seq differential expression and pathway analysis
+# Enhanced with batch correction, WGCNA, GSVA, and cell type deconvolution
 
 library(targets)
 library(tarchetypes)
 
 # Source all functions
 tar_source("R/")
+
+# Note: New analysis scripts added:
+# - R/04b_batch_correction.R - Batch effect detection and correction
+# - R/07b_advanced_pathway.R - GSVA and extended pathway databases
+# - R/07c_coexpression_networks.R - WGCNA co-expression analysis
+# - R/05b_deconvolution.R - xCell 2.0 cell type deconvolution
 
 # Load configuration
 config <- yaml::read_yaml("config.yml")
@@ -184,6 +191,36 @@ list(
   ),
 
   # ==========================================================================
+  # Stage 4b: Batch Effect Detection and Correction
+  # ==========================================================================
+  tar_target(
+    batch_analysis,
+    {
+      bc <- pipeline_config$batch_correction %||% list()
+      if (bc$detect_batch %||% TRUE) {
+        run_batch_analysis(
+          dds = dds_normalized,
+          metadata = metadata_validated,
+          config = pipeline_config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  tar_target(
+    batch_corrected_dds,
+    {
+      if (!is.null(batch_analysis) && !is.null(batch_analysis$corrected_dds)) {
+        batch_analysis$corrected_dds
+      } else {
+        dds_normalized
+      }
+    }
+  ),
+
+  # ==========================================================================
   # Stage 5: QC and exploratory analysis
   # ==========================================================================
   tar_target(
@@ -354,6 +391,105 @@ list(
   ),
 
   # ==========================================================================
+  # Stage 7b: Advanced Pathway Analysis (GSVA + Extended Databases)
+  # ==========================================================================
+  tar_target(
+    gsva_results,
+    {
+      ap <- pipeline_config$advanced_pathway %||% list()
+      if (ap$run_gsva %||% TRUE) {
+        run_advanced_pathway_analysis(
+          dds = batch_corrected_dds,
+          de_results = de_results_annotated,
+          config = pipeline_config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  tar_target(
+    gsva_scores_csv,
+    {
+      if (!is.null(gsva_results) && !is.null(gsva_results$gsva_scores)) {
+        out_path <- here::here("outputs", "gsva_scores.csv")
+        write.csv(gsva_results$gsva_scores, out_path, row.names = TRUE)
+        out_path
+      } else {
+        NULL
+      }
+    },
+    format = "file"
+  ),
+
+  # ==========================================================================
+  # Stage 7c: Co-Expression Network Analysis (WGCNA)
+  # ==========================================================================
+  tar_target(
+    wgcna_results,
+    {
+      wc <- pipeline_config$coexpression %||% list()
+      if (wc$run_wgcna %||% TRUE) {
+        run_wgcna_analysis(
+          dds = batch_corrected_dds,
+          metadata = metadata_validated,
+          config = pipeline_config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  tar_target(
+    wgcna_modules_csv,
+    {
+      if (!is.null(wgcna_results) && !is.null(wgcna_results$module_membership)) {
+        out_path <- here::here("outputs", "wgcna_modules.csv")
+        write.csv(wgcna_results$module_membership, out_path, row.names = FALSE)
+        out_path
+      } else {
+        NULL
+      }
+    },
+    format = "file"
+  ),
+
+  # ==========================================================================
+  # Stage 5b: Cell Type Deconvolution (xCell 2.0)
+  # ==========================================================================
+  tar_target(
+    deconvolution_results,
+    {
+      dc <- pipeline_config$deconvolution %||% list()
+      if (dc$run_deconvolution %||% TRUE) {
+        run_deconvolution_analysis(
+          dds = batch_corrected_dds,
+          de_results = de_results_annotated,
+          config = pipeline_config
+        )
+      } else {
+        NULL
+      }
+    }
+  ),
+
+  tar_target(
+    xcell2_scores_csv,
+    {
+      if (!is.null(deconvolution_results) && !is.null(deconvolution_results$scores)) {
+        out_path <- here::here("outputs", "xcell2_scores.csv")
+        write.csv(deconvolution_results$scores, out_path, row.names = FALSE)
+        out_path
+      } else {
+        NULL
+      }
+    },
+    format = "file"
+  ),
+
+  # ==========================================================================
   # Stage 8: Figure Commentary Generation
   # ==========================================================================
 
@@ -364,6 +500,10 @@ list(
       qc_plots = qc_plots,
       de_plots = de_plots,
       pathway_plots = pathway_plots,
+      batch_analysis = batch_analysis,
+      gsva_results = gsva_results,
+      wgcna_results = wgcna_results,
+      deconvolution_results = deconvolution_results,
       config = pipeline_config
     )
   ),
@@ -379,6 +519,10 @@ list(
       sample_correlation = sample_correlation,
       de_summary = de_summary,
       outlier_detection = outlier_detection,
+      batch_analysis = batch_analysis,
+      gsva_results = gsva_results,
+      wgcna_results = wgcna_results,
+      deconvolution_results = deconvolution_results,
       output_dir = here::here("outputs", "commentary")
     )
   ),

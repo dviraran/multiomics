@@ -1,266 +1,119 @@
-# =============================================================================
-# Multi-Omics Integration Pipeline Configuration
-# =============================================================================
-# Integrates transcriptomics, proteomics, and/or metabolomics data
-
-# -----------------------------------------------------------------------------
-# Global Settings
-# -----------------------------------------------------------------------------
 global:
-  # Which omics are present in this analysis
-  # Options: "transcriptomics", "proteomics", "metabolomics"
   omics_present:
-    - "transcriptomics"
-    - "proteomics"
-    # - "metabolomics"
-
-  # Organism (used for pathway databases when supported)
-  organism: "Homo sapiens"
-
-  # Sample metadata file (required)
-  metadata: "data/metadata.csv"
-
-  # Column in metadata with unique sample identifiers
-  sample_id_column: "sample_id"
-
-# -----------------------------------------------------------------------------
-# Experimental Design
-# -----------------------------------------------------------------------------
+  - transcriptomics
+  - proteomics
+  organism: Homo sapiens
+  metadata: ../examples/data/nci60/metadata.csv
+  sample_id_column: sample_id
 design:
-  # Main grouping variable
-  condition_column: "condition"
-
-  # Design formula for differential analysis
-  design_formula: "~ condition"
-
-  # Contrasts for differential analysis
+  condition_column: condition
+  design_formula: ~ condition
   contrasts:
-    - "treated - control"
-
-  # Reference level for condition
-  reference_level: "control"
-
-  # Optional batch variable
-  batch_column: null
-
-# -----------------------------------------------------------------------------
-# Transcriptomics Input Configuration
-# -----------------------------------------------------------------------------
+  - solid - hematological
+  reference_level: hematological
+  batch_column: ~
 transcriptomics:
-  # Input mode: "raw" or "preprocessed"
-  mode: "raw"
-
-  # Raw mode inputs
+  mode: raw
   raw:
-    counts_matrix: "data/rna_counts_matrix.csv"
-    mapping_file: null  # Optional: Ensembl -> Symbol mapping
-    gmt_file: null      # Optional: Gene sets for enrichment
-
-  # Preprocessed mode inputs
+    counts_matrix: ../examples/data/nci60/rna_counts_matrix.csv
+    mapping_file: ~
+    gmt_file: ~
   preprocessed:
-    normalized_matrix: null  # e.g., "data/rna_normalized_matrix.csv"
-    de_table: null           # Optional: skip DE if provided
-
-  # Processing parameters (for raw mode)
+    normalized_matrix: ~
+    de_table: ~
   processing:
-    # Minimum counts filter
     min_counts: 10
     min_samples: 3
-
-    # Normalization method: "vst", "rlog", "logcpm"
-    normalization: "vst"
-
-    # DE method: "DESeq2", "limma_voom"
-    de_method: "DESeq2"
-
-# -----------------------------------------------------------------------------
-# Proteomics Input Configuration
-# -----------------------------------------------------------------------------
+    normalization: vst
+    de_method: DESeq2
 proteomics:
-  # Input mode: "raw" or "preprocessed"
-  mode: "raw"
-
-  # Raw mode inputs
+  mode: raw
   raw:
-    intensity_matrix: "data/prot_intensity_matrix.csv"
-    mapping_file: null       # Optional: accession -> gene symbol
-    contaminants_file: null  # Optional: contaminant patterns
-
-  # Preprocessed mode inputs
+    intensity_matrix: ../examples/data/nci60/prot_intensity_matrix.csv
+    mapping_file: ~
+    contaminants_file: ~
   preprocessed:
-    normalized_matrix: null
-    da_table: null
-
-  # Processing parameters
+    normalized_matrix: ~
+    da_table: ~
   processing:
-    # Treat zeros as NA
-    zeros_as_na: true
-
-    # Log2 transform
-    log_transform: true
-
-    # Normalization: "vsn", "median", "quantile"
-    normalization: "median"
-
-    # Missingness filter
+    zeros_as_na: yes
+    log_transform: yes
+    normalization: median
     min_presence: 0.5
-
-    # Imputation: "none", "half_min", "knn"
-    imputation: "half_min"
-
-# -----------------------------------------------------------------------------
-# Metabolomics Input Configuration
-# -----------------------------------------------------------------------------
+    imputation: half_min
 metabolomics:
-  # Input mode: "raw" or "preprocessed"
-  mode: "raw"
-
-  # Raw mode inputs
+  mode: raw
   raw:
-    feature_matrix: "data/metab_feature_matrix.csv"
-    feature_metadata: null    # Optional: mz, rt, adduct
-    annotation_table: null    # Optional: feature -> HMDB/KEGG/class
-    pathway_mapping: null     # Optional: metabolite -> pathway
-    gmt_file: null            # Optional: metabolite sets
-
-  # Preprocessed mode inputs
+    feature_matrix: data/metab_feature_matrix.csv
+    feature_metadata: ~
+    annotation_table: ~
+    pathway_mapping: ~
+    gmt_file: ~
   preprocessed:
-    normalized_matrix: null
-    da_table: null
-
-  # Processing parameters
+    normalized_matrix: ~
+    da_table: ~
   processing:
-    zeros_as_na: true
-    transform: "log2"
-    normalization: "PQN"
+    zeros_as_na: yes
+    transform: log2
+    normalization: PQN
     min_presence: 0.3
-    imputation: "half_min"
-
-# -----------------------------------------------------------------------------
-# Sample Harmonization
-# -----------------------------------------------------------------------------
+    imputation: half_min
 harmonization:
-  # Sample overlap mode: "intersection" or "union"
-  sample_mode: "intersection"
-
-  # How to handle duplicate gene IDs after mapping
-  # Options: "sum", "median", "keep_first", "keep_max_mean"
-  duplicate_strategy: "keep_max_mean"
-
-# -----------------------------------------------------------------------------
-# Feature Selection for Integration
-# -----------------------------------------------------------------------------
+  sample_mode: intersection
+  duplicate_strategy: keep_max_mean
 feature_selection:
-  # Strategy per omics: "variance", "significant", "hybrid", "all"
   transcriptomics:
-    strategy: "hybrid"
-    top_n_variance: 2000
+    strategy: hybrid
+    top_n_variance: 2000.0
     fdr_threshold: 0.05
-
   proteomics:
-    strategy: "hybrid"
-    top_n_variance: 1000
+    strategy: hybrid
+    top_n_variance: 1000.0
     fdr_threshold: 0.05
-
   metabolomics:
-    strategy: "hybrid"
+    strategy: hybrid
     top_n_variance: 500
     fdr_threshold: 0.05
-
-# -----------------------------------------------------------------------------
-# Integration Methods
-# -----------------------------------------------------------------------------
 integration:
-  # Methods to run (pipeline adapts based on data availability)
   methods:
-    - "MOFA2"
-    - "DIABLO"
-    # - "SNF"
-    # - "sPLS"
-
-  # MOFA2 settings
+  - MOFA2
+  - DIABLO
   mofa2:
     num_factors: 10
-    convergence_mode: "fast"  # "fast" or "medium" or "slow"
+    convergence_mode: fast
     seed: 42
-
-  # DIABLO settings
   diablo:
     ncomp: 3
-    design_matrix: "full"  # "full" or "null" (between-block connections)
+    design_matrix: full
     cv_folds: 5
     cv_repeats: 10
     min_samples_per_group: 5
-
-  # SNF settings (optional)
   snf:
-    K: 20          # Number of neighbors
-    alpha: 0.5     # Hyperparameter
-    n_clusters: 2  # Expected clusters
-
-  # sPLS settings (for 2 omics)
+    K: 20
+    alpha: 0.5
+    n_clusters: 2
   spls:
     ncomp: 3
     keepX: 50
     keepY: 50
-
-# -----------------------------------------------------------------------------
-# Enrichment Analysis
-# -----------------------------------------------------------------------------
 enrichment:
-  # Run pathway enrichment
-  run_enrichment: true
-
-  # Methods: "ora", "gsea"
-  methods:
-    - "ora"
-
-  # Significance thresholds
+  run_enrichment: yes
+  methods: ora
   ora_pvalue: 0.05
   min_set_size: 10
   max_set_size: 500
-
-  # Combine evidence across omics
-  combine_method: "fisher"  # "fisher", "stouffer", "minimum"
-
-# -----------------------------------------------------------------------------
-# Output Settings
-# -----------------------------------------------------------------------------
+  combine_method: fisher
 output:
-  output_dir: "outputs"
-  report_format: "html"
+  output_dir: outputs
+  report_format: html
   fig_width: 10
   fig_height: 8
   plot_dpi: 300
-
-# -----------------------------------------------------------------------------
-# Figure Commentary Settings
-# -----------------------------------------------------------------------------
 commentary:
-  # Enable AI-generated figure commentary
-  # When enabled, the pipeline will analyze figures and generate descriptions
-  enabled: true
-
-  # Commentary backend
-  # Options:
-  #   - "claude": Use Claude Vision API (requires ANTHROPIC_API_KEY env var)
-  #   - "openai": Use OpenAI GPT-4 Vision API (requires OPENAI_API_KEY env var)
-  #   - "none": Use data-driven fallback (no LLM, deterministic)
-  backend: "none"
-
-  # Claude model for vision analysis (only used when backend is "claude")
-  # Recommended: claude-sonnet-4-20250514 (good balance of quality and cost)
-  # Alternative: claude-opus-4-20250514 (highest quality, higher cost)
-  claude_model: "claude-sonnet-4-20250514"
-
-  # OpenAI model for vision analysis (only used when backend is "openai")
-  # Recommended: gpt-4o (best vision capabilities)
-  # Alternative: gpt-4o-mini (faster, cheaper)
-  openai_model: "gpt-4o"
-
-  # Maximum tokens for commentary response
+  enabled: yes
+  backend: none
+  claude_model: claude-sonnet-4-20250514
+  openai_model: gpt-4o
   max_tokens: 1500
-
-  # Retry settings for API calls
   max_retries: 2
   retry_delay: 5
