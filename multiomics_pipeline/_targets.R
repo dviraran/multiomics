@@ -337,6 +337,8 @@ list(
         feature_selection = feature_data$selection_summary,
         foundational_summary = if (!is.null(foundational_results)) foundational_results$summary else NULL,
         mechanistic_summary = if (!is.null(mechanistic_results)) mechanistic_results$summary else NULL,
+        consensus_summary = if (!is.null(consensus_results)) consensus_results$summary else NULL,
+        stability_summary = if (!is.null(stability_results)) stability_results$summary else NULL,
         commentary = commentary_tbl
       )
 
