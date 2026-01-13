@@ -1,0 +1,11 @@
+sample_id,sample_type,condition,batch,injection_order
+ctrl_1,Sample,control,batch1,1
+ctrl_2,Sample,control,batch1,2
+ctrl_3,Sample,control,batch2,5
+treat_1,Sample,treated,batch1,3
+treat_2,Sample,treated,batch2,6
+treat_3,Sample,treated,batch2,7
+QC_1,QC,QC,batch1,4
+QC_2,QC,QC,batch2,8
+QC_3,QC,QC,batch2,9
+Blank_1,Blank,Blank,batch1,10

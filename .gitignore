@@ -1,0 +1,32 @@
+# Documentation and personal files (not part of pipelines)
+docs/
+.DS_Store
+
+# R
+.Rhistory
+.Rdata
+.RData
+.Ruserdata
+*.Rproj.user/
+
+# targets cache
+_targets/
+.targets/
+
+# renv
+renv/library/
+renv/local/
+renv/staging/
+renv/python/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db

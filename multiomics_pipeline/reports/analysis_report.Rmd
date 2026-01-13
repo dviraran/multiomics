@@ -1,0 +1,395 @@
+---
+title: "Multi-Omics Integration Analysis Report"
+author: "Multi-Omics Pipeline"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    code_folding: hide
+    df_print: paged
+params:
+  config: NULL
+  mae_data: NULL
+  integration_results: NULL
+  concordance_results: NULL
+  enrichment_results: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 7,
+  dpi = 150
+)
+
+library(tidyverse)
+library(knitr)
+library(DT)
+
+# Load targets results if not passed as params
+if (is.null(params$config)) {
+  targets::tar_load(config)
+} else {
+  config <- params$config
+}
+
+if (is.null(params$mae_data)) {
+  targets::tar_load(mae_data)
+} else {
+  mae_data <- params$mae_data
+}
+
+if (is.null(params$integration_results)) {
+  targets::tar_load(integration_results)
+} else {
+  integration_results <- params$integration_results
+}
+
+if (is.null(params$concordance_results)) {
+  targets::tar_load(concordance_results)
+} else {
+  concordance_results <- params$concordance_results
+}
+
+if (is.null(params$enrichment_results)) {
+  targets::tar_load(enrichment_results)
+} else {
+  enrichment_results <- params$enrichment_results
+}
+
+# Output directory
+output_dir <- config$output$output_dir
+```
+
+# Executive Summary
+
+This report presents the results of multi-omics data integration analysis combining:
+
+```{r summary-omics}
+omics_present <- names(mae_data$harmonized_omics)
+cat(paste0("- ", omics_present, collapse = "\n"))
+```
+
+**Key Statistics:**
+
+- **Total samples analyzed:** `r length(mae_data$common_samples)`
+- **Omics layers:** `r length(omics_present)`
+- **Condition variable:** `r config$design$condition_column`
+
+```{r summary-table}
+# Load MAE summary
+mae_summary_file <- file.path(output_dir, "tables", "mae_summary.csv")
+if (file.exists(mae_summary_file)) {
+  mae_summary <- read.csv(mae_summary_file)
+  kable(mae_summary, caption = "MultiAssayExperiment Summary")
+}
+```
+
+# Data Overview
+
+## Sample Alignment
+
+```{r sample-alignment}
+alignment_file <- file.path(output_dir, "tables", "sample_alignment.csv")
+if (file.exists(alignment_file)) {
+  alignment <- read.csv(alignment_file)
+  kable(head(alignment, 20), caption = "Sample Alignment Across Omics")
+}
+```
+
+## Sample Metadata
+
+```{r metadata}
+metadata <- mae_data$metadata
+condition_col <- config$design$condition_column
+
+# Sample distribution by condition
+if (condition_col %in% colnames(metadata)) {
+  tbl <- table(metadata[[condition_col]])
+  tbl_df <- data.frame(
+    Condition = names(tbl),
+    Count = as.numeric(tbl)
+  )
+  kable(tbl_df, caption = "Sample Distribution by Condition")
+}
+```
+
+## Feature Selection Summary
+
+```{r feature-selection}
+fs_file <- file.path(output_dir, "tables", "feature_selection_summary.csv")
+if (file.exists(fs_file)) {
+  fs_summary <- read.csv(fs_file)
+  kable(fs_summary, caption = "Features Selected for Integration")
+}
+```
+
+# Integration Results
+
+## MOFA2 Analysis {.tabset}
+
+```{r mofa-check, results='asis'}
+mofa_available <- !is.null(integration_results$mofa)
+if (!mofa_available) {
+  cat("MOFA2 analysis was not performed or failed.\n")
+}
+```
+
+```{r mofa-results, eval=mofa_available, results='asis'}
+cat("### Variance Explained\n\n")
+var_file <- file.path(output_dir, "tables", "mofa_variance_explained.csv")
+if (file.exists(var_file)) {
+  var_df <- read.csv(var_file)
+  kable(var_df, digits = 2, caption = "Variance Explained per Factor per View (%)")
+}
+```
+
+```{r mofa-heatmap, eval=mofa_available, fig.cap="MOFA2 Variance Explained Heatmap"}
+heatmap_file <- file.path(output_dir, "plots", "mofa_variance_heatmap.png")
+if (file.exists(heatmap_file)) {
+  knitr::include_graphics(heatmap_file)
+}
+```
+
+```{r mofa-factors, eval=mofa_available, fig.cap="MOFA2 Factor Plots"}
+factor_file <- file.path(output_dir, "plots", "mofa_factors_1_2.png")
+if (file.exists(factor_file)) {
+  knitr::include_graphics(factor_file)
+}
+```
+
+```{r mofa-associations, eval=mofa_available}
+assoc_file <- file.path(output_dir, "tables", "mofa_factor_associations.csv")
+if (file.exists(assoc_file)) {
+  assoc_df <- read.csv(assoc_file)
+  cat("\n### Factor-Phenotype Associations\n\n")
+  kable(assoc_df, digits = 4, caption = "MOFA Factor Associations with Condition")
+}
+```
+
+## DIABLO Analysis {.tabset}
+
+```{r diablo-check, results='asis'}
+diablo_available <- !is.null(integration_results$diablo)
+if (!diablo_available) {
+  cat("DIABLO analysis was not performed or failed.\n")
+}
+```
+
+```{r diablo-results, eval=diablo_available, results='asis'}
+cat("### Selected Features\n\n")
+selected_file <- file.path(output_dir, "tables", "diablo_selected_features_summary.csv")
+if (file.exists(selected_file)) {
+  selected_df <- read.csv(selected_file)
+  kable(selected_df, caption = "Features Selected by DIABLO")
+}
+```
+
+```{r diablo-sample-plot, eval=diablo_available, fig.cap="DIABLO Sample Plot"}
+sample_file <- file.path(output_dir, "plots", "diablo_sample_plot_comp1_2.png")
+if (file.exists(sample_file)) {
+  knitr::include_graphics(sample_file)
+}
+```
+
+```{r diablo-cv, eval=diablo_available}
+cv_file <- file.path(output_dir, "tables", "diablo_cv_error_rates.csv")
+if (file.exists(cv_file)) {
+  cv_df <- read.csv(cv_file)
+  cat("\n### Cross-Validation Performance\n\n")
+  kable(cv_df, digits = 3, caption = "DIABLO CV Error Rates")
+}
+```
+
+## SNF Analysis {.tabset}
+
+```{r snf-check, results='asis'}
+snf_available <- !is.null(integration_results$snf)
+if (!snf_available) {
+  cat("SNF analysis was not performed or failed.\n")
+}
+```
+```{r snf-results, eval=snf_available, results='asis'}
+cat("### Cluster Assignments\n\n")
+cluster_file <- file.path(output_dir, "tables", "snf_clusters.csv")
+if (file.exists(cluster_file)) {
+  cluster_df <- read.csv(cluster_file)
+  kable(head(cluster_df, 20), caption = "SNF Cluster Assignments")
+
+  # NMI if available
+  if (!is.null(integration_results$snf$nmi)) {
+    cat(paste0("\n**Normalized Mutual Information (NMI) with condition:** ",
+               round(integration_results$snf$nmi, 3), "\n\n"))
+  }
+}
+```
+
+```{r snf-mds, eval=snf_available, fig.cap="SNF MDS Plot"}
+mds_file <- file.path(output_dir, "plots", "snf_mds.png")
+if (file.exists(mds_file)) {
+  knitr::include_graphics(mds_file)
+}
+```
+
+# Cross-Omics Concordance
+
+## RNA-Protein Concordance
+
+```{r concordance}
+rp_available <- !is.null(concordance_results$rna_protein)
+```
+
+```{r rp-concordance, eval=rp_available}
+rp <- concordance_results$rna_protein
+summary_df <- data.frame(
+  Metric = c("Genes compared", "Mean correlation", "Median correlation",
+             "Positive correlations (%)", "Strong correlations (|r|>0.5)"),
+  Value = c(rp$summary$n_genes,
+            round(rp$summary$mean_cor, 3),
+            round(rp$summary$median_cor, 3),
+            round(rp$summary$pct_positive, 1),
+            rp$summary$n_significant)
+)
+kable(summary_df, caption = "RNA-Protein Expression Concordance Summary")
+```
+
+```{r rp-plot, eval=rp_available, fig.cap="RNA-Protein Correlation Distribution"}
+conc_file <- file.path(output_dir, "plots", "rna_protein_concordance.png")
+if (file.exists(conc_file)) {
+  knitr::include_graphics(conc_file)
+}
+```
+
+## Differential Concordance
+
+```{r de-concordance}
+de_file <- file.path(output_dir, "tables", "rna_protein_de_concordance.csv")
+if (file.exists(de_file)) {
+  de_conc <- read.csv(de_file)
+
+  # Summary
+  cat("**Fold Change Concordance:**\n\n")
+  cat(paste0("- Features compared: ", nrow(de_conc), "\n"))
+  cat(paste0("- Directional concordance: ",
+             round(100 * mean(de_conc$concordant), 1), "%\n"))
+  cat(paste0("- Fold change correlation: ",
+             round(cor(de_conc$rna_log2FC, de_conc$protein_log2FC), 3), "\n"))
+}
+```
+
+```{r de-scatter, fig.cap="RNA vs Protein Fold Change Scatter"}
+scatter_file <- file.path(output_dir, "plots", "rna_protein_de_scatter.png")
+if (file.exists(scatter_file)) {
+  knitr::include_graphics(scatter_file)
+}
+```
+
+# Pathway Enrichment
+
+## Per-Omics Enrichment {.tabset}
+
+```{r enrichment-per-omics, results='asis'}
+for (omic in names(mae_data$harmonized_omics)) {
+  # Check for enrichment files
+  go_file <- file.path(output_dir, "tables", paste0(omic, "_GO_enrichment.csv"))
+  ora_file <- file.path(output_dir, "tables", paste0(omic, "_ORA_enrichment.csv"))
+
+  if (file.exists(go_file)) {
+    cat(paste0("\n### ", tools::toTitleCase(omic), " (GO)\n\n"))
+    enrich_df <- read.csv(go_file)
+    enrich_df <- head(enrich_df[, c("Description", "GeneRatio", "pvalue", "p.adjust", "Count")], 15)
+    print(kable(enrich_df, digits = 4))
+  } else if (file.exists(ora_file)) {
+    cat(paste0("\n### ", tools::toTitleCase(omic), " (ORA)\n\n"))
+    enrich_df <- read.csv(ora_file)
+    enrich_df <- head(enrich_df[, c("term", "overlap", "term_size", "pvalue", "padj")], 15)
+    print(kable(enrich_df, digits = 4))
+  }
+}
+```
+
+## Combined Multi-Omics Enrichment
+
+```{r combined-enrichment}
+combined_file <- file.path(output_dir, "tables", "combined_enrichment.csv")
+if (file.exists(combined_file)) {
+  combined_df <- read.csv(combined_file)
+  combined_df <- head(combined_df[combined_df$combined_padj < 0.1, ], 20)
+
+  if (nrow(combined_df) > 0) {
+    display_cols <- c("term", "n_omics", "combined_pvalue", "combined_padj")
+    display_cols <- intersect(display_cols, colnames(combined_df))
+    kable(combined_df[, display_cols], digits = 4,
+          caption = "Top Combined Multi-Omics Enriched Pathways")
+  } else {
+    cat("No significantly enriched pathways found across multiple omics.\n")
+  }
+} else {
+  cat("Combined enrichment analysis was not performed.\n")
+}
+```
+
+# Methods Summary
+
+## Pipeline Configuration
+
+```{r methods-config}
+methods_df <- data.frame(
+  Parameter = c(
+    "Omics analyzed",
+    "Sample overlap mode",
+    "Condition column",
+    "Design formula",
+    "Contrasts",
+    "Integration methods"
+  ),
+  Value = c(
+    paste(config$global$omics_present, collapse = ", "),
+    config$harmonization$sample_mode,
+    config$design$condition_column,
+    config$design$design_formula,
+    paste(config$design$contrasts, collapse = "; "),
+    paste(config$integration$methods, collapse = ", ")
+  )
+)
+kable(methods_df, caption = "Analysis Configuration")
+```
+
+## Feature Selection Settings
+
+```{r feature-settings}
+fs_settings <- list()
+for (omic in c("transcriptomics", "proteomics", "metabolomics")) {
+  if (!is.null(config$feature_selection[[omic]])) {
+    fs <- config$feature_selection[[omic]]
+    fs_settings[[omic]] <- data.frame(
+      Omics = omic,
+      Strategy = fs$strategy %||% "variance",
+      Top_N_Variance = fs$top_n_variance %||% NA,
+      FDR_Threshold = fs$fdr_threshold %||% NA
+    )
+  }
+}
+if (length(fs_settings) > 0) {
+  fs_df <- do.call(rbind, fs_settings)
+  kable(fs_df, caption = "Feature Selection Settings per Omics")
+}
+```
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
+
+---
+
+*Report generated by the Multi-Omics Integration Pipeline*
+*Date: `r Sys.Date()`*

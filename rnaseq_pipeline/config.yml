@@ -1,0 +1,165 @@
+# RNA-seq Pipeline Configuration
+# ================================
+# Edit this file to customize your analysis
+
+# =============================================================================
+# REQUIRED INPUTS
+# =============================================================================
+
+# Path to counts matrix (genes x samples, CSV or TSV)
+# First column should be gene IDs, column headers are sample names
+counts_file: "data/covid_counts.csv"
+
+# Path to sample metadata (CSV or TSV)
+# Must contain a sample ID column matching counts column names
+metadata_file: "data/covid_metadata.csv"
+
+# Organism name (used for annotation and pathway databases)
+# Supported: human, mouse, rat, zebrafish, fly, worm, yeast, arabidopsis
+# For unsupported organisms, provide mapping_file and/or gmt_file
+organism: "human"
+
+# =============================================================================
+# SAMPLE SETTINGS
+# =============================================================================
+
+# Column name in metadata containing sample IDs (must match counts columns)
+sample_id_col: "sample_id"
+
+# Column name in metadata for primary grouping variable
+group_col: "disease"
+
+# =============================================================================
+# EXPERIMENTAL DESIGN
+# =============================================================================
+
+# Design formula for DESeq2 (R formula syntax)
+# Examples:
+#   "~ condition"                    # Simple two-group comparison
+#   "~ batch + condition"            # Account for batch effects
+#   "~ sex + age + condition"        # Multiple covariates
+design_formula: "~ disease + gender"
+
+# Contrasts to test (leave empty for auto-detection)
+# Format: contrast_name -> factor, numerator (test), denominator (reference)
+contrasts:
+  # Example for treatment vs control comparison:
+  # treatment_vs_control:
+  #   factor: "condition"
+  #   numerator: "treatment"
+  #   denominator: "control"
+  #
+  # Example for multiple comparisons:
+  # drugA_vs_control:
+  #   factor: "condition"
+  #   numerator: "drugA"
+  #   denominator: "control"
+  # drugB_vs_control:
+  #   factor: "condition"
+  #   numerator: "drugB"
+  #   denominator: "control"
+
+# =============================================================================
+# GENE ID SETTINGS
+# =============================================================================
+
+# Type of gene IDs in counts matrix
+# Options: ensembl_gene_id, entrezgene_id, external_gene_name
+gene_id_type: "ensembl_gene_id"
+
+# Strip Ensembl version suffixes (e.g., ENSG00000123456.1 -> ENSG00000123456)
+strip_ensembl_version: true
+
+# =============================================================================
+# ANNOTATION SETTINGS
+# =============================================================================
+
+# Annotation source
+# Options: auto (try biomaRt then OrgDb), biomart, annotationhub
+annotation_source: "auto"
+
+# Custom gene mapping file (optional)
+# CSV with gene_id in first column, then symbol, entrez_id, description, etc.
+# Required for non-model organisms without database support
+mapping_file: null
+
+# =============================================================================
+# FILTERING SETTINGS
+# =============================================================================
+
+# Minimum count threshold for a gene to be considered expressed
+min_count: 10
+
+# Minimum number of samples with min_count (null = automatic based on group sizes)
+min_samples: null
+
+# =============================================================================
+# DIFFERENTIAL EXPRESSION SETTINGS
+# =============================================================================
+
+# Significance threshold (adjusted p-value)
+alpha: 0.05
+
+# Log2 fold change threshold (0 = no threshold)
+lfc_threshold: 0
+
+# =============================================================================
+# QC SETTINGS
+# =============================================================================
+
+# Standard deviation threshold for outlier detection
+outlier_sd_threshold: 3
+
+# =============================================================================
+# PATHWAY ANALYSIS SETTINGS
+# =============================================================================
+
+# Pathway databases to query (for supported organisms)
+# Options: GO, KEGG, Reactome, MSigDB
+pathway_database:
+  - GO
+  - KEGG
+
+# Custom gene sets file in GMT format (optional)
+# Required for non-model organisms or custom gene sets
+gmt_file: null
+
+# Pathway analysis method
+# Options: fgsea (GSEA), ora (over-representation), both
+pathway_method: "fgsea"
+
+# Gene set size filters
+pathway_min_size: 10
+pathway_max_size: 500
+
+# =============================================================================
+# FIGURE COMMENTARY SETTINGS
+# =============================================================================
+
+# Enable AI-generated figure commentary
+# When enabled, the pipeline will analyze figures and generate descriptions
+commentary_enabled: true
+
+# Commentary backend
+# Options:
+#   - "claude": Use Claude Vision API (requires ANTHROPIC_API_KEY env var)
+#   - "openai": Use OpenAI GPT-4 Vision API (requires OPENAI_API_KEY env var)
+#   - "none": Use data-driven fallback (no LLM, deterministic)
+commentary_backend: "none"
+
+# Claude model for vision analysis (only used when backend is "claude")
+# Recommended: claude-sonnet-4-20250514 (good balance of quality and cost)
+# Alternative: claude-opus-4-20250514 (highest quality, higher cost)
+commentary_model: "claude-sonnet-4-20250514"
+
+# OpenAI model for vision analysis (only used when backend is "openai")
+# Recommended: gpt-4o (best vision capabilities)
+# Alternative: gpt-4o-mini (faster, cheaper)
+commentary_openai_model: "gpt-4o"
+
+# Maximum tokens for commentary response
+commentary_max_tokens: 1500
+
+# Retry settings for API calls
+commentary_max_retries: 2
+commentary_retry_delay: 5

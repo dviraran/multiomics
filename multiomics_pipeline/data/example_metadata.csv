@@ -1,0 +1,11 @@
+sample_id,condition,batch,sex,age
+sample_01,control,batch1,M,45
+sample_02,control,batch1,F,52
+sample_03,control,batch1,M,38
+sample_04,control,batch2,F,41
+sample_05,control,batch2,M,55
+sample_06,treated,batch1,F,48
+sample_07,treated,batch1,M,36
+sample_08,treated,batch2,F,44
+sample_09,treated,batch2,M,51
+sample_10,treated,batch2,F,39
