@@ -14,6 +14,7 @@ output:
     fig_height: 7
 params:
   results: NULL
+  commentary_tbl: NULL
 ---
 
 <style>
@@ -154,6 +155,49 @@ if (!is.null(params$results)) {
 }
 
 config <- results$config
+
+# Get commentary table
+commentary_tbl <- if (!is.null(params$commentary_tbl)) {
+  params$commentary_tbl
+} else if (!is.null(results$commentary)) {
+  results$commentary
+} else {
+  NULL
+}
+
+# Source commentary functions if available
+tryCatch({
+  source(here::here("R", "09_commentary.R"))
+  commentary_available <- TRUE
+}, error = function(e) {
+  commentary_available <<- FALSE
+})
+
+# Helper function to get commentary for a figure
+get_commentary <- function(figure_id) {
+  if (is.null(commentary_tbl)) return(NULL)
+  tryCatch({
+    get_figure_commentary(commentary_tbl, figure_id)
+  }, error = function(e) NULL)
+}
+
+# Helper to render commentary block
+render_commentary <- function(figure_id, plot_type = NULL) {
+  commentary <- get_commentary(figure_id)
+
+  if (!is.null(commentary)) {
+    html_output <- format_commentary_html(commentary)
+    cat(html_output)
+  } else if (!is.null(plot_type)) {
+    # Show static explanation if available
+    static <- get_static_explanation(plot_type)
+    if (static != "") {
+      cat(static)
+    }
+  } else {
+    cat("<div class='commentary-block commentary-unavailable'><p><em>Commentary unavailable for this figure.</em></p></div>")
+  }
+}
 ```
 
 # Executive Summary
@@ -363,6 +407,10 @@ ggplot(pca_coords, aes(x = PC1, y = PC2, color = condition)) +
   theme(legend.position = "right")
 ```
 
+```{r pca_commentary, results='asis'}
+render_commentary("pca_pc1_pc2", "pca")
+```
+
 ```{r pca_interactive}
 if (requireNamespace("plotly", quietly = TRUE)) {
   p <- ggplot(pca_coords, aes(x = PC1, y = PC2, color = condition, label = sample)) +
@@ -393,6 +441,10 @@ ggplot(scree_df, aes(x = PC, y = variance)) +
   theme_minimal()
 ```
 
+```{r scree_commentary, results='asis'}
+render_commentary("pca_scree")
+```
+
 ## Sample Correlation
 
 ```{r correlation_summary}
@@ -420,6 +472,10 @@ if (ncol(cor_mat) <= 100) {
     main = "Sample Correlation Heatmap"
   )
 }
+```
+
+```{r correlation_commentary, results='asis'}
+render_commentary("correlation_heatmap", "correlation")
 ```
 
 ## Outlier Detection
@@ -498,6 +554,12 @@ for (contrast_name in names(results$differential$results)) {
     theme(legend.position = "bottom")
 
   print(p)
+
+  # Render commentary for this volcano plot
+  clean_name <- gsub(" ", "_", gsub("-", "_vs_", contrast_name))
+  volcano_id <- paste0("volcano_", clean_name)
+  render_commentary(volcano_id, "volcano")
+
   cat("\n\n")
 }
 ```
@@ -661,6 +723,22 @@ kable(methods_df, caption = "Analysis Parameters")
 
 ```{r session_info}
 sessionInfo()
+```
+
+# Commentary Summary
+
+```{r commentary_summary}
+if (!is.null(commentary_tbl) && nrow(commentary_tbl) > 0) {
+  cat("This report includes automated figure commentary.\n\n")
+
+  summary_tbl <- commentary_tbl[, c("figure_id", "title", "confidence", "backend")]
+  colnames(summary_tbl) <- c("Figure ID", "Title", "Confidence", "Backend")
+
+  kable(summary_tbl, caption = "Commentary Summary")
+} else {
+  cat("Figure commentary was not generated for this analysis.\n")
+  cat("To enable commentary, set `commentary: enabled: true` in config.yml\n")
+}
 ```
 
 ---

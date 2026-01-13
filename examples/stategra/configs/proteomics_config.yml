@@ -1,0 +1,51 @@
+input:
+  quant_matrix: /Users/dviraran/Documents/multiomics/examples/data/stategra/prot_intensity_matrix.csv
+  metadata: /Users/dviraran/Documents/multiomics/examples/data/stategra/metadata.csv
+  sample_id_column: sample_id
+  organism: Mus musculus
+  feature_id_type: uniprot
+  feature_level: protein
+design:
+  condition_column: condition
+  design_formula: ~ condition
+  contrasts:
+  - differentiating - proliferating
+  reference_level: proliferating
+processing:
+  zeros_as_na: yes
+  log_transform: yes
+  normalization_method: median
+filtering:
+  global_min_presence: 0.5
+  group_min_presence: 0.6
+  low_intensity_quantile: 0.0
+imputation:
+  method: QRILC
+  min_prob_quantile: 0.01
+  tune_sigma: 1.0
+qc:
+  n_pca_components: 5.0
+  outlier_sd_threshold: 3.0
+  min_sample_correlation: 0.8
+  run_umap: no
+differential:
+  method: limma
+  adj_pvalue_threshold: 0.05
+  log2fc_threshold: 1.0
+pathway:
+  run_pathway_analysis: yes
+  databases:
+  - GO
+  - KEGG
+  go_ontologies:
+  - BP
+  - MF
+  ora_pvalue_threshold: 0.05
+  min_set_size: 10.0
+  max_set_size: 500.0
+output:
+  output_dir: outputs
+  report_format: html
+commentary:
+  enabled: yes
+  backend: none

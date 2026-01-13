@@ -90,17 +90,40 @@ run_advanced_pathway_analysis <- function(normalized_counts, de_results_annotate
 get_advanced_pathway_config <- function(config) {
   ap <- config$advanced_pathway %||% list()
 
+  # Normalize organism name
+  organism_raw <- config$organism %||% "human"
+  organism <- normalize_organism_name(organism_raw)
+
   list(
     run_advanced_pathway = ap$run_advanced_pathway %||% TRUE,
     run_gsva = ap$run_gsva %||% TRUE,
     gsva_method = ap$gsva_method %||% "gsva",  # "gsva", "ssgsea", "zscore", "plage"
     msigdb_categories = ap$msigdb_categories %||% c("H", "C2", "C5"),
-    organism = config$organism %||% "human",
+    organism = organism,
     min_gene_set_size = ap$min_gene_set_size %||% 10,
     max_gene_set_size = ap$max_gene_set_size %||% 500,
     fdr_threshold = ap$fdr_threshold %||% 0.05,
     n_top_pathways = ap$n_top_pathways %||% 50
   )
+}
+
+#' Normalize organism name for GSVA/MSigDB
+normalize_organism_name <- function(organism) {
+  if (is.null(organism)) return("human")
+
+  organism_lower <- tolower(organism)
+
+  if (organism_lower %in% c("human", "homo sapiens", "homo_sapiens", "hs")) {
+    return("human")
+  }
+  if (organism_lower %in% c("mouse", "mus musculus", "mus_musculus", "mm")) {
+    return("mouse")
+  }
+  if (organism_lower %in% c("rat", "rattus norvegicus", "rattus_norvegicus", "rn")) {
+    return("rat")
+  }
+
+  return(organism)
 }
 
 # =============================================================================

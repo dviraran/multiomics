@@ -152,8 +152,9 @@ run_xcell2_analysis <- function(expr_matrix, metadata, config, output_dir) {
   log_message("Running xCell 2.0 analysis...")
 
   # Get configuration parameters
-  organism <- config$organism %||% "human"
-  reference <- config$reference %||% "BlueprintEncode"
+  organism_raw <- config$organism %||% "human"
+  organism <- normalize_organism(organism_raw)
+  reference <- config$reference %||% get_default_reference(organism)
   custom_reference <- config$custom_reference %||% NULL
 
   log_message("  Organism: ", organism)
@@ -1232,4 +1233,44 @@ run_xcell_legacy <- function(dds, de_results, config, output_dir, plots_dir) {
     log_message("ERROR in legacy xCell: ", e$message)
     return(NULL)
   })
+}
+
+# -----------------------------------------------------------------------------
+# Organism Helper Functions
+# -----------------------------------------------------------------------------
+
+#' Normalize organism name to standard format
+#' @param organism Character string with organism name
+#' @return Standardized organism name ("human", "mouse", or original)
+normalize_organism <- function(organism) {
+  if (is.null(organism)) return("human")
+
+  organism_lower <- tolower(organism)
+
+  # Map various organism names to standardized forms
+  if (organism_lower %in% c("human", "homo sapiens", "homo_sapiens", "hs", "hsapiens")) {
+    return("human")
+  }
+
+  if (organism_lower %in% c("mouse", "mus musculus", "mus_musculus", "mm", "mmusculus")) {
+    return("mouse")
+  }
+
+  if (organism_lower %in% c("rat", "rattus norvegicus", "rattus_norvegicus", "rn", "rnorvegicus")) {
+    return("rat")
+  }
+
+  # Return original if no match
+  return(organism)
+}
+
+#' Get default xCell2 reference for organism
+#' @param organism Normalized organism name
+#' @return Default reference name
+get_default_reference <- function(organism) {
+  switch(organism,
+    "human" = "BlueprintEncode",
+    "mouse" = "ImmGen",
+    "BlueprintEncode"  # Default fallback
+  )
 }

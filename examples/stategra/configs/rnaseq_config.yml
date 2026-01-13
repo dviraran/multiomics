@@ -1,0 +1,25 @@
+counts_file: /Users/dviraran/Documents/multiomics/examples/data/stategra/rna_counts_matrix.csv
+metadata_file: /Users/dviraran/Documents/multiomics/examples/data/stategra/metadata.csv
+sample_id_column: sample_id
+condition_column: condition
+design_formula: ~ condition
+contrasts:
+- differentiating - proliferating
+reference_level: proliferating
+organism: Mus musculus
+gene_id_type: ensembl_gene_id
+strip_ensembl_version: yes
+annotation_source: auto
+min_count: 10.0
+min_samples: 2.0
+alpha: 0.05
+lfc_threshold: 0.0
+outlier_sd_threshold: 3.0
+pathway_database:
+- GO
+- KEGG
+pathway_method: fgsea
+pathway_min_size: 10.0
+pathway_max_size: 500.0
+commentary_enabled: yes
+commentary_backend: none

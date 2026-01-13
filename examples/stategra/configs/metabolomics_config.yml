@@ -1,0 +1,24 @@
+input:
+  feature_matrix: /Users/dviraran/Documents/multiomics/examples/data/stategra/metab_feature_matrix.csv
+  metadata: /Users/dviraran/Documents/multiomics/examples/data/stategra/metadata.csv
+  feature_metadata: /Users/dviraran/Documents/multiomics/examples/data/stategra/metab_feature_metadata.csv
+  sample_id_column: sample_id
+design:
+  condition_column: condition
+  design_formula: ~ condition
+  contrasts:
+  - differentiating - proliferating
+  reference_level: proliferating
+processing:
+  zeros_as_na: yes
+  log_transform: yes
+  normalization_method: PQN
+qc:
+  run_pca: yes
+  n_pca_components: 5.0
+output:
+  output_dir: outputs
+  report_format: html
+commentary:
+  enabled: yes
+  backend: none

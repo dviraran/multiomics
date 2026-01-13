@@ -1,0 +1,70 @@
+global:
+  omics_present:
+  - transcriptomics
+  - proteomics
+  organism: Mus musculus
+  metadata: /Users/dviraran/Documents/multiomics/examples/data/stategra/metadata.csv
+  sample_id_column: sample_id
+design:
+  condition_column: condition
+  design_formula: ~ condition
+  contrasts:
+  - differentiating - proliferating
+  reference_level: proliferating
+transcriptomics:
+  mode: raw
+  raw:
+    counts_matrix: /Users/dviraran/Documents/multiomics/examples/data/stategra/rna_counts_matrix.csv
+  processing:
+    min_counts: 10.0
+    min_samples: 2.0
+    normalization: vst
+    de_method: DESeq2
+proteomics:
+  mode: raw
+  raw:
+    intensity_matrix: /Users/dviraran/Documents/multiomics/examples/data/stategra/prot_intensity_matrix.csv
+  processing:
+    zeros_as_na: yes
+    log_transform: yes
+    normalization: median
+    min_presence: 0.5
+    imputation: half_min
+harmonization:
+  sample_mode: intersection
+  duplicate_strategy: keep_max_mean
+feature_selection:
+  transcriptomics:
+    strategy: hybrid
+    top_n_variance: 1500.0
+    fdr_threshold: 0.05
+  proteomics:
+    strategy: hybrid
+    top_n_variance: 800.0
+    fdr_threshold: 0.05
+integration:
+  methods:
+  - MOFA2
+  - DIABLO
+  mofa2:
+    num_factors: 5.0
+    convergence_mode: fast
+    seed: 42.0
+  diablo:
+    ncomp: 2.0
+    design_matrix: full
+    cv_folds: 3.0
+    cv_repeats: 5.0
+    min_samples_per_group: 2.0
+enrichment:
+  run_enrichment: yes
+  methods: ora
+  ora_pvalue: 0.05
+  min_set_size: 10.0
+  max_set_size: 500.0
+output:
+  output_dir: outputs
+  report_format: html
+commentary:
+  enabled: yes
+  backend: none
