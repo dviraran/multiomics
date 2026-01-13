@@ -17,7 +17,105 @@ params:
   integration_results: NULL
   concordance_results: NULL
   enrichment_results: NULL
+  commentary_tbl: NULL
 ---
+
+<style>
+/* Commentary block styling */
+.commentary-block {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-left: 4px solid #6c757d;
+  border-radius: 0 8px 8px 0;
+  padding: 15px 20px;
+  margin: 15px 0;
+  font-size: 0.95em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.commentary-block.ai-generated {
+  border-left-color: #0d6efd;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e7f1ff 100%);
+}
+
+.commentary-block.data-driven {
+  border-left-color: #198754;
+  background: linear-gradient(135deg, #f0fff4 0%, #e6f7ed 100%);
+}
+
+.commentary-block h4 {
+  margin: 0 0 10px 0;
+  color: #495057;
+  font-size: 1.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.commentary-block h4::before {
+  content: "";
+  font-size: 1.2em;
+}
+
+.commentary-block.ai-generated h4::before {
+  content: "\1F916";
+}
+
+.commentary-block.data-driven h4::before {
+  content: "\1F4CA";
+}
+
+.commentary-section {
+  margin: 10px 0 5px 0;
+  padding: 0;
+}
+
+.commentary-section-title {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.commentary-section ul {
+  margin: 5px 0;
+  padding-left: 20px;
+}
+
+.commentary-section li {
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+
+.commentary-what-is-this {
+  font-style: italic;
+  color: #6c757d;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #dee2e6;
+}
+
+.commentary-issues {
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 10px;
+}
+
+.commentary-issues .commentary-section-title {
+  color: #856404;
+}
+
+.commentary-next-steps {
+  background: rgba(13, 110, 253, 0.05);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 10px;
+}
+
+.commentary-next-steps .commentary-section-title {
+  color: #084298;
+}
+</style>
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -64,8 +162,95 @@ if (is.null(params$enrichment_results)) {
   enrichment_results <- params$enrichment_results
 }
 
+if (is.null(params$commentary_tbl)) {
+  tryCatch({
+    targets::tar_load(commentary_tbl)
+  }, error = function(e) {
+    commentary_tbl <<- NULL
+  })
+} else {
+  commentary_tbl <- params$commentary_tbl
+}
+
 # Output directory
 output_dir <- config$output$output_dir
+
+# Helper function to render commentary for a figure
+render_commentary <- function(figure_id, commentary_tbl) {
+  if (is.null(commentary_tbl) || nrow(commentary_tbl) == 0) {
+    return("")
+  }
+
+  # Find commentary for this figure
+  row <- commentary_tbl[commentary_tbl$figure_id == figure_id, ]
+
+  if (nrow(row) == 0) {
+    return("")
+  }
+
+  # Parse JSON if stored as character
+  if (is.character(row$commentary_json) && nchar(row$commentary_json) > 0) {
+    tryCatch({
+      commentary <- jsonlite::fromJSON(row$commentary_json)
+    }, error = function(e) {
+      return("")
+    })
+  } else {
+    return("")
+  }
+
+  # Determine if AI-generated or data-driven
+  backend <- if (!is.null(row$backend)) row$backend else "none"
+  block_class <- if (backend %in% c("claude", "openai")) "ai-generated" else "data-driven"
+  title_text <- if (backend %in% c("claude", "openai")) "AI-Generated Commentary" else "Data-Driven Commentary"
+
+  # Build HTML
+  html <- paste0('<div class="commentary-block ', block_class, '">\n')
+  html <- paste0(html, '<h4>', title_text, '</h4>\n')
+
+  # What is this
+  if (!is.null(commentary$what_is_this) && nchar(commentary$what_is_this) > 0) {
+    html <- paste0(html, '<div class="commentary-what-is-this">',
+                   htmltools::htmlEscape(commentary$what_is_this), '</div>\n')
+  }
+
+  # Observations
+  if (!is.null(commentary$observations) && length(commentary$observations) > 0) {
+    html <- paste0(html, '<div class="commentary-section">\n')
+    html <- paste0(html, '<div class="commentary-section-title">Key Observations</div>\n')
+    html <- paste0(html, '<ul>\n')
+    for (obs in commentary$observations) {
+      html <- paste0(html, '<li>', htmltools::htmlEscape(obs), '</li>\n')
+    }
+    html <- paste0(html, '</ul>\n</div>\n')
+  }
+
+  # Issues/checks
+  if (!is.null(commentary$issues_checks) && length(commentary$issues_checks) > 0) {
+    html <- paste0(html, '<div class="commentary-section commentary-issues">\n')
+    html <- paste0(html, '<div class="commentary-section-title">Potential Issues / Checks</div>\n')
+    html <- paste0(html, '<ul>\n')
+    for (issue in commentary$issues_checks) {
+      html <- paste0(html, '<li>', htmltools::htmlEscape(issue), '</li>\n')
+    }
+    html <- paste0(html, '</ul>\n</div>\n')
+  }
+
+  # Next steps
+  if (!is.null(commentary$next_steps) && length(commentary$next_steps) > 0) {
+    html <- paste0(html, '<div class="commentary-section commentary-next-steps">\n')
+    html <- paste0(html, '<div class="commentary-section-title">Recommended Next Steps</div>\n')
+    html <- paste0(html, '<ul>\n')
+    for (step in commentary$next_steps) {
+      html <- paste0(html, '<li>', htmltools::htmlEscape(step), '</li>\n')
+    }
+    html <- paste0(html, '</ul>\n</div>\n')
+  }
+
+  html <- paste0(html, '</div>\n')
+
+  return(html)
+}
 ```
 
 # Executive Summary
@@ -165,6 +350,11 @@ if (file.exists(factor_file)) {
 }
 ```
 
+```{r mofa-commentary, eval=mofa_available, results='asis'}
+cat(render_commentary("mofa_variance_heatmap", commentary_tbl))
+cat(render_commentary("mofa_factors_1_2", commentary_tbl))
+```
+
 ```{r mofa-associations, eval=mofa_available}
 assoc_file <- file.path(output_dir, "tables", "mofa_factor_associations.csv")
 if (file.exists(assoc_file)) {
@@ -197,6 +387,10 @@ sample_file <- file.path(output_dir, "plots", "diablo_sample_plot_comp1_2.png")
 if (file.exists(sample_file)) {
   knitr::include_graphics(sample_file)
 }
+```
+
+```{r diablo-commentary, eval=diablo_available, results='asis'}
+cat(render_commentary("diablo_sample_plot", commentary_tbl))
 ```
 
 ```{r diablo-cv, eval=diablo_available}
@@ -238,6 +432,10 @@ if (file.exists(mds_file)) {
 }
 ```
 
+```{r snf-commentary, eval=snf_available, results='asis'}
+cat(render_commentary("snf_mds", commentary_tbl))
+```
+
 # Cross-Omics Concordance
 
 ## RNA-Protein Concordance
@@ -267,6 +465,10 @@ if (file.exists(conc_file)) {
 }
 ```
 
+```{r concordance-commentary, eval=rp_available, results='asis'}
+cat(render_commentary("rna_protein_concordance", commentary_tbl))
+```
+
 ## Differential Concordance
 
 ```{r de-concordance}
@@ -289,6 +491,10 @@ scatter_file <- file.path(output_dir, "plots", "rna_protein_de_scatter.png")
 if (file.exists(scatter_file)) {
   knitr::include_graphics(scatter_file)
 }
+```
+
+```{r de-scatter-commentary, results='asis'}
+cat(render_commentary("rna_protein_de_scatter", commentary_tbl))
 ```
 
 # Pathway Enrichment

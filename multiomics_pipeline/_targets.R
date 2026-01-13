@@ -25,6 +25,7 @@ source("R/07_diablo.R")
 source("R/08_snf.R")
 source("R/09_concordance.R")
 source("R/10_enrichment.R")
+source("R/11_commentary.R")
 
 # Set target options
 tar_option_set(
@@ -190,6 +191,48 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # Figure Commentary Generation
+  # ---------------------------------------------------------------------------
+
+  # Build table of all figures with metadata
+  tar_target(
+    name = figures_tbl,
+    command = build_figures_table(
+      mae_data = mae_data,
+      integration_results = integration_results,
+      concordance_results = concordance_results,
+      enrichment_results = enrichment_results,
+      config = config
+    )
+  ),
+
+  # Generate commentary for all figures
+  tar_target(
+    name = commentary_tbl,
+    command = generate_all_commentary(
+      figures_tbl = figures_tbl,
+      config = config,
+      mae_data = mae_data,
+      integration_results = integration_results,
+      concordance_results = concordance_results,
+      output_dir = file.path(config$output$output_dir, "commentary")
+    )
+  ),
+
+  # Save figures table
+  tar_target(
+    name = figures_tbl_csv,
+    command = {
+      out_dir <- file.path(config$output$output_dir, "commentary")
+      if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+      out_path <- file.path(out_dir, "figures_metadata.csv")
+      write_csv(figures_tbl, out_path)
+      out_path
+    },
+    format = "file"
+  ),
+
+  # ---------------------------------------------------------------------------
   # Final Summary
   # ---------------------------------------------------------------------------
   tar_target(
@@ -204,7 +247,8 @@ list(
         n_samples = length(mae_data$common_samples),
         integration_methods_run = names(integration_results)[!sapply(integration_results, is.null)],
         mae_summary = mae_summary,
-        feature_selection = feature_data$selection_summary
+        feature_selection = feature_data$selection_summary,
+        commentary = commentary_tbl
       )
 
       # Save summary
@@ -232,7 +276,8 @@ list(
       mae_data = mae_data,
       integration_results = integration_results,
       concordance_results = concordance_results,
-      enrichment_results = enrichment_results
+      enrichment_results = enrichment_results,
+      commentary_tbl = commentary_tbl
     )
   )
 )

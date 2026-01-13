@@ -232,3 +232,35 @@ output:
   fig_width: 10
   fig_height: 8
   plot_dpi: 300
+
+# -----------------------------------------------------------------------------
+# Figure Commentary Settings
+# -----------------------------------------------------------------------------
+commentary:
+  # Enable AI-generated figure commentary
+  # When enabled, the pipeline will analyze figures and generate descriptions
+  enabled: true
+
+  # Commentary backend
+  # Options:
+  #   - "claude": Use Claude Vision API (requires ANTHROPIC_API_KEY env var)
+  #   - "openai": Use OpenAI GPT-4 Vision API (requires OPENAI_API_KEY env var)
+  #   - "none": Use data-driven fallback (no LLM, deterministic)
+  backend: "none"
+
+  # Claude model for vision analysis (only used when backend is "claude")
+  # Recommended: claude-sonnet-4-20250514 (good balance of quality and cost)
+  # Alternative: claude-opus-4-20250514 (highest quality, higher cost)
+  claude_model: "claude-sonnet-4-20250514"
+
+  # OpenAI model for vision analysis (only used when backend is "openai")
+  # Recommended: gpt-4o (best vision capabilities)
+  # Alternative: gpt-4o-mini (faster, cheaper)
+  openai_model: "gpt-4o"
+
+  # Maximum tokens for commentary response
+  max_tokens: 1500
+
+  # Retry settings for API calls
+  max_retries: 2
+  retry_delay: 5
