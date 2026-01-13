@@ -5,11 +5,14 @@
 # cancer cell line panel from public repositories.
 #
 # Data sources:
-# - RNA-seq: CellMiner (NCI/NIH)
+# - RNA-seq: CellMiner (NCI/NIH) - https://discover.nci.nih.gov/cellminer/
 # - Proteomics: SWATH-MS from Guo et al. 2019
-# - Metabolomics: NCI DTP
+# - Metabolomics: Simulated (based on NCI-60 structure)
 #
-# Usage: Rscript download_nci60_data.R
+# Note: If direct downloads fail, the script creates realistic simulated data
+# that follows the NCI-60 structure for pipeline testing.
+#
+# Usage: Rscript download_nci60_data.R (from examples/ directory)
 # =============================================================================
 
 library(tidyverse)
@@ -25,16 +28,30 @@ cat("=== Downloading NCI-60 Multi-Omics Data ===\n\n")
 # -----------------------------------------------------------------------------
 cat("Downloading RNA-seq data...\n")
 
-# CellMiner provides processed RNA-seq TPM data
-# We'll use the rcellminer package or direct download
-rna_url <- "https://discover.nci.nih.gov/cellminer/downloadData/RNA__RNA_seq_composite_expression.txt"
+# CellMiner provides processed RNA-seq data as a zip file
+# URL from: https://discover.nci.nih.gov/cellminer/loadDownload.do
+rna_url <- "https://discover.nci.nih.gov/cellminer/download/processeddataset/nci60_RNA__RNA_seq_composite_expression.zip"
 
 tryCatch({
+  rna_zip <- file.path(data_dir, "nci60_rnaseq.zip")
   rna_file <- file.path(data_dir, "nci60_rnaseq_tpm.txt")
 
   # Download if not exists
   if (!file.exists(rna_file)) {
-    download.file(rna_url, rna_file, mode = "wb", quiet = FALSE)
+    cat("  Downloading from CellMiner...\n")
+    download.file(rna_url, rna_zip, mode = "wb", quiet = FALSE)
+
+    # Unzip and find the data file
+    unzip(rna_zip, exdir = data_dir)
+
+    # Find the extracted txt file
+    txt_files <- list.files(data_dir, pattern = "\\.txt$", full.names = TRUE)
+    if (length(txt_files) > 0) {
+      file.rename(txt_files[1], rna_file)
+    }
+
+    # Clean up zip
+    unlink(rna_zip)
     cat("  Downloaded RNA-seq data\n")
   } else {
     cat("  RNA-seq data already exists, skipping\n")
@@ -59,7 +76,8 @@ tryCatch({
   cat("  Processed RNA-seq matrix:", nrow(rna_matrix), "genes x", ncol(rna_matrix), "samples\n")
 
 }, error = function(e) {
-  cat("  Warning: Could not download RNA-seq from CellMiner.\n")
+  cat("  Note: Could not download RNA-seq from CellMiner.\n")
+  cat("  Error:", conditionMessage(e), "\n")
   cat("  Creating simulated data based on NCI-60 structure...\n")
 
   # Create realistic simulated data with NCI-60 cell line names
@@ -104,29 +122,12 @@ tryCatch({
 # -----------------------------------------------------------------------------
 cat("\nDownloading proteomics data...\n")
 
-# The NCI-60 proteomics data from Guo et al. 2019 is available via supplementary
-prot_url <- "https://www.cell.com/cms/10.1016/j.isci.2019.11.014/attachment/7a7d7c8e-da35-4cdc-bab2-5f3df02dd60a/mmc2.xlsx"
+# NCI-60 proteomics - creating simulated data based on real structure
+# Original source: Guo et al. 2019 (iScience) - requires authentication
+cat("  Note: NCI-60 proteomics from Guo et al. 2019 requires manual download.\n")
+cat("  Creating simulated proteomics data based on NCI-60 structure...\n")
 
 tryCatch({
-  prot_file <- file.path(data_dir, "nci60_proteomics_raw.xlsx")
-
-  if (!file.exists(prot_file)) {
-    download.file(prot_url, prot_file, mode = "wb", quiet = FALSE)
-    cat("  Downloaded proteomics data\n")
-  } else {
-    cat("  Proteomics data already exists, skipping\n")
-  }
-
-  # Read and process
-  if (requireNamespace("readxl", quietly = TRUE)) {
-    prot_raw <- readxl::read_xlsx(prot_file)
-    # Process into matrix format
-    # ... (depends on exact file structure)
-  }
-
-}, error = function(e) {
-  cat("  Warning: Could not download proteomics from Cell.\n")
-  cat("  Creating simulated proteomics data...\n")
 
   # Use same cell lines as RNA
   cell_lines <- colnames(read.csv(file.path(data_dir, "rna_counts_matrix.csv"), row.names = 1))
@@ -146,6 +147,9 @@ tryCatch({
 
   write.csv(prot_matrix, file.path(data_dir, "prot_intensity_matrix.csv"))
   cat("  Created simulated proteomics matrix:", nrow(prot_matrix), "proteins x", ncol(prot_matrix), "samples\n")
+
+}, error = function(e) {
+  cat("  Error creating proteomics data:", e$message, "\n")
 })
 
 # -----------------------------------------------------------------------------
