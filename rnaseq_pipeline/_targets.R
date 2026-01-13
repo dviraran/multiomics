@@ -400,8 +400,10 @@ list(
       ap <- pipeline_config$advanced_pathway %||% list()
       if (ap$run_gsva %||% TRUE) {
         run_advanced_pathway_analysis(
-          dds = batch_corrected_dds,
-          de_results = de_results_annotated,
+          normalized_counts = vst_counts,
+          de_results_annotated = de_results_annotated,
+          gene_annotation = annotation_stats,
+          metadata = metadata_validated,
           config = pipeline_config
         )
       } else {
@@ -433,8 +435,9 @@ list(
       wc <- pipeline_config$coexpression %||% list()
       if (wc$run_wgcna %||% TRUE) {
         run_wgcna_analysis(
-          dds = batch_corrected_dds,
+          vst_counts = vst_counts,
           metadata = metadata_validated,
+          gene_annotation = annotation_stats,
           config = pipeline_config
         )
       } else {

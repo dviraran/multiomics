@@ -66,20 +66,47 @@ run_ppi_network_analysis <- function(da_results, normalized_data, config) {
   }
 
   # Map column names (handle different naming conventions)
-  if (!"padj" %in% colnames(da_results) && "adj.P.Val" %in% colnames(da_results)) {
-    da_results$padj <- da_results$adj.P.Val
-  }
-  if (!"log2FoldChange" %in% colnames(da_results) && "logFC" %in% colnames(da_results)) {
-    da_results$log2FoldChange <- da_results$logFC
-  }
-  if (!"protein_id" %in% colnames(da_results)) {
-    # Use row names as protein IDs
-    da_results$protein_id <- rownames(da_results)
+  if (!"padj" %in% colnames(da_results)) {
+    if ("adj.P.Val" %in% colnames(da_results)) {
+      da_results$padj <- da_results$adj.P.Val
+    } else if ("FDR" %in% colnames(da_results)) {
+      da_results$padj <- da_results$FDR
+    } else {
+      log_message("WARNING: No adjusted p-value column found. Skipping PPI analysis.")
+      return(NULL)
+    }
   }
 
-  sig_proteins <- da_results %>%
-    dplyr::filter(padj < sig_threshold, abs(log2FoldChange) > lfc_threshold) %>%
-    dplyr::pull(protein_id)
+  if (!"log2FoldChange" %in% colnames(da_results)) {
+    if ("logFC" %in% colnames(da_results)) {
+      da_results$log2FoldChange <- da_results$logFC
+    } else if ("log2FC" %in% colnames(da_results)) {
+      da_results$log2FoldChange <- da_results$log2FC
+    } else {
+      log_message("WARNING: No log fold change column found. Skipping PPI analysis.")
+      return(NULL)
+    }
+  }
+
+  if (!"protein_id" %in% colnames(da_results)) {
+    # Use row names as protein IDs
+    if (!is.null(rownames(da_results)) && !all(rownames(da_results) == as.character(1:nrow(da_results)))) {
+      da_results$protein_id <- rownames(da_results)
+    } else {
+      log_message("WARNING: No protein identifiers found. Skipping PPI analysis.")
+      return(NULL)
+    }
+  }
+
+  # Filter significant proteins
+  sig_proteins <- tryCatch({
+    da_results %>%
+      dplyr::filter(.data$padj < sig_threshold, abs(.data$log2FoldChange) > lfc_threshold) %>%
+      dplyr::pull(.data$protein_id)
+  }, error = function(e) {
+    log_message("WARNING: Error filtering proteins: ", conditionMessage(e))
+    character(0)
+  })
 
   log_message("  Found ", length(sig_proteins), " significant proteins for network analysis")
 

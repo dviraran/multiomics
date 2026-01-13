@@ -35,8 +35,14 @@ run_deconvolution_analysis <- function(dds, de_results, config) {
     return(NULL)
   }
 
+  # Validate inputs
+  if (is.null(dds) || length(dds) == 0) {
+    log_message("WARNING: Invalid dds object. Skipping deconvolution.")
+    return(NULL)
+  }
+
   # Set up output directories
-  output_dir <- file.path(config$output$output_dir, "deconvolution")
+  output_dir <- file.path(config$output$output_dir %||% "outputs", "deconvolution")
   plots_dir <- file.path(output_dir, "plots")
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   if (!dir.exists(plots_dir)) dir.create(plots_dir, recursive = TRUE)
@@ -52,7 +58,13 @@ run_deconvolution_analysis <- function(dds, de_results, config) {
     }
 
     # Use legacy xCell
-    return(run_xcell_legacy(dds, de_results, config, output_dir, plots_dir))
+    return(tryCatch(
+      run_xcell_legacy(dds, de_results, config, output_dir, plots_dir),
+      error = function(e) {
+        log_message("WARNING: xCell legacy analysis failed: ", conditionMessage(e))
+        NULL
+      }
+    ))
   }
 
   # Extract expression matrix

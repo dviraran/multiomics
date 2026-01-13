@@ -335,15 +335,19 @@ get_significant_genes <- function(de_result, ap) {
     return(list(all = character(0), up = character(0), down = character(0)))
   }
 
-  sig_idx <- de_result[[padj_col]] < ap$fdr_threshold & !is.na(de_result[[padj_col]])
+  # Handle NA values safely - use FALSE for any NA comparisons
+  padj_values <- de_result[[padj_col]]
+  sig_idx <- !is.na(padj_values) & padj_values < ap$fdr_threshold
 
   all_sig <- de_result[[gene_col]][sig_idx]
   all_sig <- all_sig[!is.na(all_sig) & all_sig != ""]
 
   # Up and down regulated
   if (!is.na(lfc_col)) {
-    up_idx <- sig_idx & de_result[[lfc_col]] > 0
-    down_idx <- sig_idx & de_result[[lfc_col]] < 0
+    lfc_values <- de_result[[lfc_col]]
+    # Handle NA in lfc_values as well
+    up_idx <- sig_idx & !is.na(lfc_values) & lfc_values > 0
+    down_idx <- sig_idx & !is.na(lfc_values) & lfc_values < 0
 
     up_genes <- de_result[[gene_col]][up_idx]
     down_genes <- de_result[[gene_col]][down_idx]

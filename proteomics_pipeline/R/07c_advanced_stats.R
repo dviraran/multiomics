@@ -218,13 +218,16 @@ compute_effect_sizes_with_ci <- function(normalized_data, metadata, da_results, 
 
   effect_df <- do.call(rbind, effect_results)
 
-  # Merge with DA results
-  effect_df <- merge(
-    effect_df,
-    da_results[, c("protein_id", "log2FoldChange", "pvalue", "padj")],
-    by = "protein_id",
-    all.x = TRUE
-  )
+  # Merge with DA results - only include columns that exist
+  merge_cols <- intersect(c("protein_id", "log2FoldChange", "pvalue", "padj"), colnames(da_results))
+  if (length(merge_cols) > 1) {  # Need at least protein_id + one other
+    effect_df <- merge(
+      effect_df,
+      da_results[, merge_cols, drop = FALSE],
+      by = "protein_id",
+      all.x = TRUE
+    )
+  }
 
   # Determine significance of effect sizes (CI excludes 0)
   effect_df$significant <- effect_df$ci_lower > 0 | effect_df$ci_upper < 0

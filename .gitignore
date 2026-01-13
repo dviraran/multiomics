@@ -1,6 +1,10 @@
 # Documentation and personal files (not part of pipelines)
 docs/
 .DS_Store
+CLAUDE.md
+
+# VSCode workspace files
+*.code-workspace
 
 # R
 .Rhistory
