@@ -1,6 +1,34 @@
 # =============================================================================
 # Pathway and Set Enrichment Analysis
 # =============================================================================
+#
+# This file uses shared utilities from ../shared/R/ when available for:
+# - GMT file reading and validation
+# - Support for custom pathway definitions
+
+# Source shared utilities if available
+.source_shared_utils <- function() {
+    possible_paths <- c(
+        file.path(dirname(dirname(getwd())), "shared", "R"),
+        file.path(dirname(getwd()), "shared", "R"),
+        file.path(getwd(), "..", "shared", "R"),
+        file.path(getwd(), "..", "..", "shared", "R")
+    )
+
+    for (shared_dir in possible_paths) {
+        if (dir.exists(shared_dir)) {
+            gmt_file <- file.path(shared_dir, "gmt_utils.R")
+            if (file.exists(gmt_file)) {
+                source(gmt_file)
+                message("Loaded shared GMT utilities")
+                return(TRUE)
+            }
+        }
+    }
+    return(FALSE)
+}
+
+.source_shared_utils()
 
 #' Run enrichment analysis
 #'

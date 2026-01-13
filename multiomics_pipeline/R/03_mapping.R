@@ -1,6 +1,36 @@
 # =============================================================================
 # Identifier Harmonization / Mapping Layer
 # =============================================================================
+#
+# This file uses shared utilities from ../shared/R/ when available for:
+# - Unified annotation with fallback chain
+# - Organism and ID type detection
+# - Support for non-model organisms
+
+# Source shared utilities if available
+.source_shared_utils <- function() {
+    possible_paths <- c(
+        file.path(dirname(dirname(getwd())), "shared", "R"),
+        file.path(dirname(getwd()), "shared", "R"),
+        file.path(getwd(), "..", "shared", "R"),
+        file.path(getwd(), "..", "..", "shared", "R")
+    )
+
+    for (shared_dir in possible_paths) {
+        if (dir.exists(shared_dir)) {
+            for (util_file in c("annotation_utils.R", "organism_detection.R", "gmt_utils.R")) {
+                full_path <- file.path(shared_dir, util_file)
+                if (file.exists(full_path)) {
+                    source(full_path)
+                }
+            }
+            return(TRUE)
+        }
+    }
+    return(FALSE)
+}
+
+.source_shared_utils()
 
 #' Harmonize identifiers across all omics
 harmonize_identifiers <- function(preprocessed_data, config) {

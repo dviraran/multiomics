@@ -590,6 +590,12 @@ check_sample_matching <- function(data, metadata, config, result, verbose) {
 }
 
 #' Check group sizes for statistical validity
+#'
+#' Provides warnings based on sample size adequacy for different analyses:
+#' - n < 2 per group: Cannot perform statistical tests
+#' - n < 3 per group: Results unreliable, no variance estimation
+#' - n < 5 per group: Low power, consider increasing replicates
+#' - n < 10 per group: May have limited power for subtle effects
 check_group_sizes <- function(metadata, config, result, verbose) {
 
     group_col <- config$group_col %||%
@@ -601,6 +607,8 @@ check_group_sizes <- function(metadata, config, result, verbose) {
     }
 
     group_sizes <- table(metadata[[group_col]])
+    min_size <- min(group_sizes)
+    total_samples <- sum(group_sizes)
 
     if (verbose) {
         message("  Group sizes:")
@@ -609,12 +617,34 @@ check_group_sizes <- function(metadata, config, result, verbose) {
         }
     }
 
-    # Check for small groups
-    small_groups <- names(group_sizes)[group_sizes < 3]
-    if (length(small_groups) > 0) {
+    # Critical: Groups with n < 2 (cannot do statistics)
+    critical_groups <- names(group_sizes)[group_sizes < 2]
+    if (length(critical_groups) > 0) {
+        result$errors <- c(result$errors,
+            sprintf("CRITICAL: Groups with n < 2: %s. Cannot perform statistical tests!",
+                    paste(critical_groups, collapse = ", ")))
+    }
+
+    # Severe: Groups with n < 3 (no variance estimation)
+    severe_groups <- names(group_sizes)[group_sizes >= 2 & group_sizes < 3]
+    if (length(severe_groups) > 0) {
         result$warnings <- c(result$warnings,
-            sprintf("Groups with n < 3: %s (statistical tests may be unreliable)",
-                    paste(small_groups, collapse = ", ")))
+            sprintf("Groups with n = 2: %s. Results will be unreliable (no variance estimation).",
+                    paste(severe_groups, collapse = ", ")))
+    }
+
+    # Warning: Groups with n < 5 (low power)
+    low_power_groups <- names(group_sizes)[group_sizes >= 3 & group_sizes < 5]
+    if (length(low_power_groups) > 0) {
+        result$warnings <- c(result$warnings,
+            sprintf("Groups with n < 5: %s. Statistical power is limited.",
+                    paste(low_power_groups, collapse = ", ")))
+    }
+
+    # Info: Overall sample size guidance
+    if (min_size >= 3 && min_size < 10) {
+        result$info <- c(result$info,
+            sprintf("Minimum group size is %d. For robust results, consider n >= 10 per group.", min_size))
     }
 
     # Check for very unbalanced groups
@@ -622,9 +652,20 @@ check_group_sizes <- function(metadata, config, result, verbose) {
         ratio <- max(group_sizes) / min(group_sizes)
         if (ratio > 5) {
             result$warnings <- c(result$warnings,
-                sprintf("Highly unbalanced groups (ratio %.1f:1) - consider this in interpretation",
+                sprintf("Highly unbalanced groups (ratio %.1f:1). Consider balanced designs for better power.",
                         ratio))
+        } else if (ratio > 2) {
+            result$info <- c(result$info,
+                sprintf("Group sizes are somewhat unbalanced (ratio %.1f:1).", ratio))
         }
+    }
+
+    # Power analysis guidance
+    if (min_size < 10 && length(result$errors) == 0) {
+        result$info <- c(result$info,
+            "TIP: With small sample sizes, only large effect sizes will be detectable.")
+        result$info <- c(result$info,
+            "TIP: Consider running a power analysis before interpreting results.")
     }
 
     result$stats$group_sizes <- as.list(group_sizes)

@@ -1,6 +1,43 @@
 # =============================================================================
 # Annotation and ID Mapping
 # =============================================================================
+#
+# This file uses shared utilities from ../shared/R/ when available for:
+# - Unified annotation with fallback chain (custom -> biomart -> orgdb)
+# - Organism and ID type detection
+# - Support for non-model organisms
+
+# Source shared utilities if available
+.source_shared_utils <- function() {
+    # Try multiple possible paths
+    possible_paths <- c(
+        file.path(dirname(dirname(getwd())), "shared", "R"),
+        file.path(dirname(getwd()), "shared", "R"),
+        file.path(getwd(), "..", "shared", "R"),
+        file.path(getwd(), "..", "..", "shared", "R")
+    )
+
+    for (shared_dir in possible_paths) {
+        if (dir.exists(shared_dir)) {
+            annotation_file <- file.path(shared_dir, "annotation_utils.R")
+            organism_file <- file.path(shared_dir, "organism_detection.R")
+
+            if (file.exists(annotation_file)) {
+                source(annotation_file)
+                message("Loaded shared annotation utilities")
+            }
+            if (file.exists(organism_file)) {
+                source(organism_file)
+                message("Loaded shared organism detection utilities")
+            }
+            return(TRUE)
+        }
+    }
+    return(FALSE)
+}
+
+# Try to load shared utilities
+.source_shared_utils()
 
 #' Map feature IDs to gene symbols and other identifiers
 #'
@@ -324,3 +361,92 @@ create_mapping_summary <- function(annotation_df) {
 
   return(summary_df)
 }
+
+
+#' Annotate features using shared utilities (preferred method for non-model organisms)
+#'
+#' This function uses the shared annotation utilities which provide:
+#' - Flexible fallback chain (custom -> biomart -> orgdb -> none)
+#' - Support for non-model organisms
+#' - Auto-detection of ID types
+#' - Graceful degradation when annotation fails
+#'
+#' @param ingested_data Data from ingestion step
+#' @param config Pipeline configuration list
+#' @return Annotation result with annotations and mapping summary
+#' @export
+annotate_features_v2 <- function(ingested_data, config) {
+    log_message("=== Starting Feature Annotation (v2) ===")
+
+    feature_ids <- rownames(ingested_data$matrix)
+    organism <- config$input$organism
+
+    # Check if shared utilities are available
+    if (!exists("annotate_features", mode = "function", envir = globalenv()) &&
+        !exists("annotate_features", mode = "function")) {
+        log_message("Shared utilities not loaded, using legacy annotation")
+        return(annotate_features(ingested_data, config))
+    }
+
+    # Build config for shared utilities
+    annotation_config <- list(
+        organism = organism,
+        annotation = list(
+            skip_annotation = isTRUE(config$annotation$skip_annotation),
+            custom_mapping_file = config$optional_inputs$mapping_file,
+            fallback_chain = config$annotation$fallback_chain %||%
+                             c("custom", "biomart"),
+            id_type = config$input$feature_id_type %||% "uniprot"
+        )
+    )
+
+    # Auto-detect ID type if needed
+    if (annotation_config$annotation$id_type == "auto" &&
+        exists("detect_id_type", mode = "function")) {
+        detected_type <- detect_id_type(feature_ids)
+        log_message("Auto-detected ID type: ", detected_type)
+        annotation_config$annotation$id_type <- detected_type
+    }
+
+    # Auto-detect organism if not specified
+    if (is.null(organism) && exists("detect_organism_from_ids", mode = "function")) {
+        org_result <- detect_organism_from_ids(feature_ids)
+        if (org_result$confidence %in% c("high", "medium")) {
+            log_message("Auto-detected organism: ", org_result$organism,
+                        " (", org_result$confidence, " confidence)")
+            annotation_config$organism <- org_result$organism
+        }
+    }
+
+    # Call shared annotation function (note: we need to use a different name to avoid recursion)
+    shared_annotate <- get("annotate_features", envir = globalenv())
+    annotation_result <- shared_annotate(feature_ids, annotation_config, verbose = TRUE)
+
+    # Convert to proteomics pipeline format
+    annotation_df <- data.frame(
+        feature_id = annotation_result$feature_id,
+        original_id = feature_ids,
+        uniprot_accession = parse_uniprot_accession(feature_ids),
+        gene_symbol = annotation_result$symbol,
+        entrez_id = annotation_result$entrez_id,
+        protein_name = annotation_result$description,
+        stringsAsFactors = FALSE
+    )
+
+    # Calculate mapping summary
+    mapping_summary <- create_mapping_summary(annotation_df)
+
+    # Save annotation table
+    save_table(annotation_df, "feature_annotations.csv", config, "tables")
+    save_table(mapping_summary, "mapping_summary.csv", config, "qc")
+
+    log_message("=== Feature Annotation Complete ===")
+
+    list(
+        annotations = annotation_df,
+        mapping_summary = mapping_summary
+    )
+}
+
+# Null coalescing operator
+`%||%` <- function(x, y) if (is.null(x)) y else x

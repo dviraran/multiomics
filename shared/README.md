@@ -144,6 +144,43 @@ print(result$stats)
 # $n_genes, $n_samples, $group_sizes, etc.
 ```
 
+### `R/executive_summary.R` - Report Summaries
+
+Generate executive summaries for analysis reports.
+
+**Key Functions:**
+- `generate_rnaseq_summary()` - Summary for RNA-seq analysis
+- `generate_proteomics_summary()` - Summary for proteomics analysis
+- `generate_metabolomics_summary()` - Summary for metabolomics analysis
+- `generate_multiomics_summary()` - Summary for multi-omics integration
+- `generate_summary()` - Generic function for any pipeline type
+
+**Usage:**
+```r
+source("shared/R/executive_summary.R")
+
+# Generate summary from pipeline results
+summary_text <- generate_rnaseq_summary(
+    de_results = de_results,
+    enrichment_results = enrichment_results,
+    qc_results = qc_results,
+    config = config
+)
+
+# Include in R Markdown report
+cat(summary_text)
+```
+
+**Output example:**
+```markdown
+## RNA-seq Analysis Summary
+
+- Analyzed 24 samples with 15,234 genes after filtering
+- Treatment vs Control: 1,247 significant genes (623 up, 624 down) at FDR < 0.05
+  - Top genes: BRCA1, TP53, MYC, EGFR, KRAS
+- Top enriched pathways: Cell cycle; DNA repair; Apoptosis
+```
+
 ## Scripts
 
 ### `scripts/generate_gmt.R` - GMT Generation Tool
