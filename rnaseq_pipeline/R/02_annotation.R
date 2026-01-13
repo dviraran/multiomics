@@ -1,5 +1,31 @@
 # R/02_annotation.R
 # Functions for gene ID processing and annotation
+#
+# This file uses shared utilities from ../shared/R/ for:
+# - Unified annotation with fallback chain (custom -> biomart -> orgdb)
+# - Organism and ID type detection
+# - Support for non-model organisms
+
+# Source shared utilities if available
+shared_utils_dir <- file.path(dirname(dirname(getwd())), "shared", "R")
+if (!exists("shared_utils_dir")) {
+    shared_utils_dir <- file.path(dirname(getwd()), "shared", "R")
+}
+
+if (dir.exists(shared_utils_dir)) {
+    # Source shared annotation utilities
+    annotation_utils_file <- file.path(shared_utils_dir, "annotation_utils.R")
+    organism_utils_file <- file.path(shared_utils_dir, "organism_detection.R")
+
+    if (file.exists(annotation_utils_file)) {
+        source(annotation_utils_file)
+        message("Loaded shared annotation utilities")
+    }
+    if (file.exists(organism_utils_file)) {
+        source(organism_utils_file)
+        message("Loaded shared organism detection utilities")
+    }
+}
 
 #' Process gene IDs - strip version suffixes and handle duplicates
 #' @param counts Counts matrix with gene IDs as rownames
@@ -377,4 +403,128 @@ annotate_genes <- function(gene_ids,
   )
 
   list(annotation = annotation, stats = stats)
+}
+
+
+#' Annotate genes using shared utilities (preferred method)
+#'
+#' This function uses the shared annotation utilities which provide:
+#' - Flexible fallback chain (custom -> biomart -> orgdb -> none)
+#' - Support for non-model organisms
+#' - Auto-detection of ID types
+#' - Graceful degradation when annotation fails
+#'
+#' @param gene_ids Vector of gene IDs
+#' @param config Pipeline configuration list
+#' @param verbose Print progress messages
+#' @return List with annotation data frame and statistics
+#' @export
+annotate_genes_v2 <- function(gene_ids, config, verbose = TRUE) {
+
+    # Check if shared utilities are available
+    if (!exists("annotate_features")) {
+        message("Shared utilities not loaded, falling back to legacy annotation")
+        return(annotate_genes(
+            gene_ids = gene_ids,
+            organism = config$organism %||% "Homo sapiens",
+            gene_id_type = config$gene_id_type %||% "ensembl_gene_id",
+            mapping_file = config$custom_gene_mapping,
+            annotation_source = "auto"
+        ))
+    }
+
+    # Build config for shared utilities
+    annotation_config <- list(
+        organism = config$organism,
+        annotation = list(
+            skip_annotation = isTRUE(config$skip_annotation) ||
+                              isTRUE(config$annotation$skip_annotation),
+            custom_mapping_file = config$custom_gene_mapping %||%
+                                  config$annotation$custom_mapping_file,
+            custom_annotation_file = config$annotation$custom_annotation_file,
+            fallback_chain = config$annotation$fallback_chain %||%
+                             c("custom", "biomart", "orgdb"),
+            id_type = config$gene_id_type %||%
+                      config$annotation$id_type %||%
+                      "auto"
+        )
+    )
+
+    # Auto-detect ID type if needed
+    if (annotation_config$annotation$id_type == "auto" && exists("detect_id_type")) {
+        detected_type <- detect_id_type(gene_ids)
+        if (verbose) message("Auto-detected ID type: ", detected_type)
+        annotation_config$annotation$id_type <- detected_type
+    }
+
+    # Auto-detect organism if not specified
+    if (is.null(annotation_config$organism) && exists("detect_organism_from_ids")) {
+        org_result <- detect_organism_from_ids(gene_ids)
+        if (org_result$confidence %in% c("high", "medium")) {
+            if (verbose) message("Auto-detected organism: ", org_result$organism,
+                                  " (", org_result$confidence, " confidence)")
+            annotation_config$organism <- org_result$organism
+        }
+    }
+
+    # Call shared annotation function
+    annotation_result <- annotate_features(gene_ids, annotation_config, verbose = verbose)
+
+    # Convert to legacy format for compatibility
+    annotation <- data.frame(
+        gene_id = annotation_result$feature_id,
+        symbol = annotation_result$symbol,
+        description = annotation_result$description,
+        entrez_id = annotation_result$entrez_id,
+        stringsAsFactors = FALSE
+    )
+
+    # Get statistics
+    stats <- attr(annotation_result, "annotation_stats")
+    if (is.null(stats)) {
+        stats <- list(
+            source = "shared_utils",
+            total_genes = length(gene_ids),
+            annotated_genes = sum(annotation_result$annotation_source != "none"),
+            success_rate = mean(annotation_result$annotation_source != "none")
+        )
+    } else {
+        stats <- list(
+            source = paste(names(stats$sources), collapse = "+"),
+            total_genes = stats$total_features,
+            annotated_genes = stats$annotated_features,
+            success_rate = stats$coverage
+        )
+    }
+
+    list(annotation = annotation, stats = stats)
+}
+
+
+#' Check if annotation coverage is sufficient for pathway analysis
+#'
+#' @param annotation_result Result from annotate_genes() or annotate_genes_v2()
+#' @param min_coverage Minimum required coverage (0-1)
+#' @return Logical
+#' @export
+check_annotation_for_enrichment <- function(annotation_result, min_coverage = 0.3) {
+    coverage <- annotation_result$stats$success_rate
+
+    if (coverage < min_coverage) {
+        warning(sprintf(
+            "Annotation coverage (%.1f%%) is below threshold (%.1f%%) for enrichment.\n",
+            100 * coverage, 100 * min_coverage
+        ), "Consider:\n",
+           "  1. Providing a custom gene mapping file\n",
+           "  2. Using a custom GMT file for enrichment\n",
+           "  3. Setting skip_enrichment: true in config")
+        return(FALSE)
+    }
+
+    TRUE
+}
+
+# Null coalescing operator (if not already defined)
+if (!exists("%||%")) {
+    `%||%` <- function(x, y) if (is.null(x)) y else x
 }
