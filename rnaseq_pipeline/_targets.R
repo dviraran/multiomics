@@ -2,6 +2,69 @@
 # Main targets pipeline for RNA-seq differential expression and pathway analysis
 # Enhanced with batch correction, WGCNA, GSVA, and cell type deconvolution
 
+# ==========================================================================
+# Package check - prompt to install missing packages
+# ==========================================================================
+check_and_install_packages <- function(packages) {
+  # Separate CRAN and Bioconductor packages
+  bioc_packages <- c(
+    "DESeq2", "edgeR", "limma", "AnnotationHub", "biomaRt",
+    "clusterProfiler", "fgsea", "enrichplot", "GSVA", "WGCNA",
+    "SummarizedExperiment", "BiocGenerics", "S4Vectors"
+  )
+
+  missing <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
+
+ if (length(missing) > 0) {
+    message("\n========================================")
+    message("Missing packages detected:")
+    message(paste(" -", missing, collapse = "\n"))
+    message("========================================\n")
+
+    answer <- readline(prompt = "Would you like to install them? (y/n): ")
+
+    if (tolower(answer) == "y") {
+      # Install BiocManager if needed
+      if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+      }
+
+      cran_missing <- setdiff(missing, bioc_packages)
+      bioc_missing <- intersect(missing, bioc_packages)
+
+      if (length(cran_missing) > 0) {
+        message("Installing CRAN packages: ", paste(cran_missing, collapse = ", "))
+        install.packages(cran_missing)
+      }
+
+      if (length(bioc_missing) > 0) {
+        message("Installing Bioconductor packages: ", paste(bioc_missing, collapse = ", "))
+        BiocManager::install(bioc_missing, ask = FALSE)
+      }
+
+      # Re-check
+      still_missing <- missing[!sapply(missing, requireNamespace, quietly = TRUE)]
+      if (length(still_missing) > 0) {
+        stop("Failed to install: ", paste(still_missing, collapse = ", "))
+      }
+      message("All packages installed successfully!")
+    } else {
+      stop("Cannot proceed without required packages: ", paste(missing, collapse = ", "))
+    }
+  }
+}
+
+# Define required packages
+required_packages <- c(
+  "tidyverse", "DESeq2", "edgeR", "limma", "AnnotationHub", "biomaRt",
+  "clusterProfiler", "fgsea", "enrichplot", "ggplot2", "pheatmap",
+  "ggrepel", "RColorBrewer", "here", "yaml", "janitor", "matrixStats",
+  "jsonlite", "htmltools", "qs"
+)
+
+# Check packages before loading targets
+check_and_install_packages(required_packages)
+
 library(targets)
 library(tarchetypes)
 

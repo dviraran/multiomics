@@ -37,3 +37,4 @@ Thumbs.db
 
 # Pipeline outputs (generated files, not tracked)
 */outputs/
+examples/runs/

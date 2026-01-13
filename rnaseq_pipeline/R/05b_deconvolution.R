@@ -224,30 +224,45 @@ run_xcell2_analysis <- function(expr_matrix, metadata, config, output_dir) {
 run_xcell2_human <- function(expr_matrix, reference, config) {
   log_message("  Using human reference: ", reference)
 
-  # Available references in xCell2
-  available_refs <- c(
-    "BlueprintEncode",
-    "LM22",
-    "DICE",
-    "Monaco",
-    "Schmiedel",
-    "HPCA"
+  # Map reference name to xCell2 data object name (new API)
+  ref_map <- c(
+    "BlueprintEncode" = "BlueprintEncode.xCell2Ref",
+    "LM22" = "LM22.xCell2Ref",
+    "DICE" = "DICE_demo.xCell2Ref",
+    "ImmuneCompendium" = "ImmuneCompendium.xCell2Ref",
+    "PanCancer" = "PanCancer.xCell2Ref",
+    "TMECompendium" = "TMECompendium.xCell2Ref",
+    "TabulaSapiensBlood" = "TabulaSapiensBlood.xCell2Ref"
   )
 
-  if (!reference %in% available_refs) {
+  # Get data object name
+  ref_data_name <- ref_map[[reference]]
+  if (is.null(ref_data_name)) {
     log_message("WARNING: Reference '", reference, "' not recognized. Using BlueprintEncode.")
-    reference <- "BlueprintEncode"
+    ref_data_name <- "BlueprintEncode.xCell2Ref"
   }
 
   # Get reference object
-  ref_obj <- get_xcell2_reference(reference)
+  ref_obj <- get_xcell2_reference(ref_data_name)
 
-  # Run analysis
-  scores <- xCell2::xCell2Analysis(
-    expr = expr_matrix,
-    xcell2_ref = ref_obj,
-    parallel = config$parallel %||% TRUE
-  )
+  if (is.null(ref_obj)) {
+    log_message("  Could not load xCell2 reference. Skipping deconvolution.")
+    return(NULL)
+  }
+
+  # Run analysis with new API: mix, xcell2object
+  scores <- tryCatch({
+    xCell2::xCell2Analysis(
+      mix = expr_matrix,
+      xcell2object = ref_obj,
+      minSharedGenes = 0.8,
+      rawScores = FALSE,
+      spillover = TRUE
+    )
+  }, error = function(e) {
+    log_message("  xCell2 analysis failed: ", e$message)
+    NULL
+  })
 
   return(scores)
 }
@@ -256,24 +271,31 @@ run_xcell2_human <- function(expr_matrix, reference, config) {
 run_xcell2_mouse <- function(expr_matrix, reference, config) {
   log_message("  Using mouse reference: ", reference)
 
-  # Check if mouse reference is available
-  # xCell2 supports mouse via ImmGen and custom references
+  # Map mouse reference names to xCell2 data object names
+  mouse_ref_map <- c(
+    "ImmGen" = "ImmGenData.xCell2Ref",
+    "mouse_default" = "ImmGenData.xCell2Ref",
+    "MouseRNAseq" = "MouseRNAseqData.xCell2Ref",
+    "TabulaMurisBlood" = "TabulaMurisBlood.xCell2Ref"
+  )
 
-  if (reference == "ImmGen" || reference == "mouse_default") {
-    # Use built-in mouse reference if available
-    ref_obj <- tryCatch({
-      xCell2::getXCell2Ref("ImmGen")
-    }, error = function(e) {
-      log_message("WARNING: ImmGen reference not found. Using default.")
-      NULL
-    })
+  ref_data_name <- mouse_ref_map[[reference]]
+  if (!is.null(ref_data_name)) {
+    ref_obj <- get_xcell2_reference(ref_data_name)
 
     if (!is.null(ref_obj)) {
-      scores <- xCell2::xCell2Analysis(
-        expr = expr_matrix,
-        xcell2_ref = ref_obj,
-        parallel = config$parallel %||% TRUE
-      )
+      scores <- tryCatch({
+        xCell2::xCell2Analysis(
+          mix = expr_matrix,
+          xcell2object = ref_obj,
+          minSharedGenes = 0.8,
+          rawScores = FALSE,
+          spillover = TRUE
+        )
+      }, error = function(e) {
+        log_message("  xCell2 mouse analysis failed: ", e$message)
+        NULL
+      })
       return(scores)
     }
   }
@@ -282,25 +304,62 @@ run_xcell2_mouse <- function(expr_matrix, reference, config) {
   log_message("  Mapping mouse genes to human orthologs for analysis...")
   expr_human <- convert_mouse_to_human(expr_matrix)
 
-  ref_obj <- get_xcell2_reference("BlueprintEncode")
-  scores <- xCell2::xCell2Analysis(
-    expr = expr_human,
-    xcell2_ref = ref_obj,
-    parallel = config$parallel %||% TRUE
-  )
+  ref_obj <- get_xcell2_reference("BlueprintEncode.xCell2Ref")
+
+  if (is.null(ref_obj)) {
+    log_message("  Could not load human reference for mouse fallback.")
+    return(NULL)
+  }
+
+  scores <- tryCatch({
+    xCell2::xCell2Analysis(
+      mix = expr_human,
+      xcell2object = ref_obj,
+      minSharedGenes = 0.8,
+      rawScores = FALSE,
+      spillover = TRUE
+    )
+  }, error = function(e) {
+    log_message("  xCell2 mouse fallback analysis failed: ", e$message)
+    NULL
+  })
 
   return(scores)
 }
 
 #' Get xCell2 Reference Object
 get_xcell2_reference <- function(reference_name) {
-  tryCatch({
-    xCell2::getXCell2Ref(reference_name)
-  }, error = function(e) {
-    log_message("WARNING: Could not load reference '", reference_name, "': ", e$message)
-    # Return default
-    xCell2::getXCell2Ref("BlueprintEncode")
-  })
+  # Try multiple approaches for xCell2 API compatibility
+  ref_obj <- NULL
+
+  # Approach 1: Try xCell2ref function (older API)
+  if (is.null(ref_obj)) {
+    ref_obj <- tryCatch({
+      if (exists("getXCell2Ref", where = asNamespace("xCell2"), mode = "function")) {
+        xCell2::getXCell2Ref(reference_name)
+      } else {
+        NULL
+      }
+    }, error = function(e) NULL)
+  }
+
+  # Approach 2: Try xCell2Ref data object (some versions)
+  if (is.null(ref_obj)) {
+    ref_obj <- tryCatch({
+      # Some versions have pre-built reference objects
+      data_env <- new.env()
+      data(list = paste0("xCell2_", reference_name), package = "xCell2", envir = data_env)
+      get(paste0("xCell2_", reference_name), envir = data_env)
+    }, error = function(e) NULL)
+  }
+
+  # Approach 3: Run without explicit reference (let xCell2 use default)
+  if (is.null(ref_obj)) {
+    log_message("  Could not load reference '", reference_name, "'. Will use xCell2 defaults.")
+    return(NULL)  # Return NULL to signal caller to use default approach
+  }
+
+  return(ref_obj)
 }
 
 #' Convert Mouse Genes to Human Orthologs

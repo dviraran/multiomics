@@ -6,11 +6,19 @@
 #' @param qc_plots List of QC plot paths from generate_qc_plots()
 #' @param de_plots List of DE plot paths from generate_de_plots()
 #' @param pathway_plots List of pathway plot paths from generate_pathway_plots()
+#' @param batch_analysis Batch analysis results (may contain plot paths)
+#' @param gsva_results GSVA analysis results (may contain plot paths)
+#' @param wgcna_results WGCNA analysis results (may contain plot paths)
+#' @param deconvolution_results Deconvolution results (may contain plot paths)
 #' @param config Pipeline configuration
 #' @return Data frame with figure metadata
 build_figures_table <- function(qc_plots = NULL,
                                  de_plots = NULL,
                                  pathway_plots = NULL,
+                                 batch_analysis = NULL,
+                                 gsva_results = NULL,
+                                 wgcna_results = NULL,
+                                 deconvolution_results = NULL,
                                  config = NULL) {
 
   figures <- list()
@@ -174,6 +182,98 @@ build_figures_table <- function(qc_plots = NULL,
     }
   }
 
+  # Batch analysis plots
+  if (!is.null(batch_analysis) && is.list(batch_analysis)) {
+    if (!is.null(batch_analysis$plots)) {
+      for (plot_name in names(batch_analysis$plots)) {
+        filepath <- batch_analysis$plots[[plot_name]]
+        if (!is.null(filepath) && is.character(filepath) && file.exists(filepath)) {
+          figures[[paste0("batch_", plot_name)]] <- data.frame(
+            figure_id = paste0("batch_", plot_name),
+            filepath = filepath,
+            plot_type = "batch",
+            section = "Batch Effects",
+            title = paste("Batch Analysis:", gsub("_", " ", plot_name)),
+            description = "Visualization of batch effects in the data",
+            x_axis = NA_character_,
+            y_axis = NA_character_,
+            contrast = NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+
+  # GSVA results plots
+  if (!is.null(gsva_results) && is.list(gsva_results)) {
+    if (!is.null(gsva_results$plots)) {
+      for (plot_name in names(gsva_results$plots)) {
+        filepath <- gsva_results$plots[[plot_name]]
+        if (!is.null(filepath) && is.character(filepath) && file.exists(filepath)) {
+          figures[[paste0("gsva_", plot_name)]] <- data.frame(
+            figure_id = paste0("gsva_", plot_name),
+            filepath = filepath,
+            plot_type = "heatmap",
+            section = "GSVA Analysis",
+            title = paste("GSVA:", gsub("_", " ", plot_name)),
+            description = "Gene set variation analysis results",
+            x_axis = "Samples",
+            y_axis = "Gene Sets",
+            contrast = NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+
+  # WGCNA results plots
+  if (!is.null(wgcna_results) && is.list(wgcna_results)) {
+    if (!is.null(wgcna_results$plots)) {
+      for (plot_name in names(wgcna_results$plots)) {
+        filepath <- wgcna_results$plots[[plot_name]]
+        if (!is.null(filepath) && is.character(filepath) && file.exists(filepath)) {
+          figures[[paste0("wgcna_", plot_name)]] <- data.frame(
+            figure_id = paste0("wgcna_", plot_name),
+            filepath = filepath,
+            plot_type = "network",
+            section = "WGCNA Co-Expression",
+            title = paste("WGCNA:", gsub("_", " ", plot_name)),
+            description = "Weighted gene co-expression network analysis",
+            x_axis = NA_character_,
+            y_axis = NA_character_,
+            contrast = NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+
+  # Deconvolution results plots
+  if (!is.null(deconvolution_results) && is.list(deconvolution_results)) {
+    if (!is.null(deconvolution_results$plots)) {
+      for (plot_name in names(deconvolution_results$plots)) {
+        filepath <- deconvolution_results$plots[[plot_name]]
+        if (!is.null(filepath) && is.character(filepath) && file.exists(filepath)) {
+          figures[[paste0("deconv_", plot_name)]] <- data.frame(
+            figure_id = paste0("deconv_", plot_name),
+            filepath = filepath,
+            plot_type = "barplot",
+            section = "Cell Type Deconvolution",
+            title = paste("Deconvolution:", gsub("_", " ", plot_name)),
+            description = "Cell type composition estimates",
+            x_axis = "Samples",
+            y_axis = "Cell Type Proportion",
+            contrast = NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+
   # Combine all figures
   if (length(figures) == 0) {
     message("No figures found to document")
@@ -215,6 +315,10 @@ build_figures_table <- function(qc_plots = NULL,
 #' @param sample_correlation Correlation matrix for data-driven fallback
 #' @param de_summary DE summary for data-driven fallback
 #' @param outlier_detection Outlier flags for data-driven fallback
+#' @param batch_analysis Batch analysis results for data-driven fallback
+#' @param gsva_results GSVA results for data-driven fallback
+#' @param wgcna_results WGCNA results for data-driven fallback
+#' @param deconvolution_results Deconvolution results for data-driven fallback
 #' @param output_dir Directory for commentary outputs
 #' @return Data frame with commentary for each figure
 generate_all_commentary <- function(figures_tbl,
@@ -224,6 +328,10 @@ generate_all_commentary <- function(figures_tbl,
                                      sample_correlation = NULL,
                                      de_summary = NULL,
                                      outlier_detection = NULL,
+                                     batch_analysis = NULL,
+                                     gsva_results = NULL,
+                                     wgcna_results = NULL,
+                                     deconvolution_results = NULL,
                                      output_dir = "outputs/commentary") {
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)

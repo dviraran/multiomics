@@ -53,21 +53,31 @@ run_mofa2_integration <- function(feature_data, config) {
 
   if (is.null(mofa_obj)) return(NULL)
 
-  # Set data options
+  # Prepare options using new API (MOFA2 >= 1.10)
   data_opts <- MOFA2::get_default_data_options(mofa_obj)
-  mofa_obj <- MOFA2::set_data_options(mofa_obj, data_opts)
 
-  # Set model options
   model_opts <- MOFA2::get_default_model_options(mofa_obj)
   model_opts$num_factors <- min(num_factors, ncol(matrices[[1]]) - 1)
-  mofa_obj <- MOFA2::set_model_options(mofa_obj, model_opts)
 
-  # Set training options
   train_opts <- MOFA2::get_default_training_options(mofa_obj)
   train_opts$convergence_mode <- convergence_mode
   train_opts$seed <- seed
   train_opts$verbose <- FALSE
-  mofa_obj <- MOFA2::set_training_options(mofa_obj, train_opts)
+
+  # Use prepare_mofa to set all options at once (new API)
+  mofa_obj <- tryCatch({
+    MOFA2::prepare_mofa(
+      mofa_obj,
+      data_options = data_opts,
+      model_options = model_opts,
+      training_options = train_opts
+    )
+  }, error = function(e) {
+    log_message("Error preparing MOFA object: ", e$message)
+    return(NULL)
+  })
+
+  if (is.null(mofa_obj)) return(NULL)
 
   # Run MOFA
   log_message("Training MOFA2 model with ", model_opts$num_factors, " factors...")

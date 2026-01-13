@@ -19,40 +19,71 @@ run_advanced_pathway_analysis <- function(normalized_counts, de_results_annotate
                                           gene_annotation, metadata, config) {
   log_message("=== Running Advanced Pathway Analysis ===")
 
-  ap <- get_advanced_pathway_config(config)
+  # Wrap entire function in tryCatch to prevent pipeline failure
+ tryCatch({
+    ap <- get_advanced_pathway_config(config)
 
-  if (!ap$run_advanced_pathway) {
-    log_message("Advanced pathway analysis disabled. Skipping.")
-    return(NULL)
-  }
+    if (!ap$run_advanced_pathway) {
+      log_message("Advanced pathway analysis disabled. Skipping.")
+      return(NULL)
+    }
 
-  results <- list()
+    results <- list()
 
-  # 1. Run GSVA
-  if (ap$run_gsva) {
-    results$gsva <- run_gsva_analysis(normalized_counts, metadata, ap, config)
-  }
+    # 1. Run GSVA
+    if (ap$run_gsva) {
+      results$gsva <- tryCatch(
+        run_gsva_analysis(normalized_counts, metadata, ap, config),
+        error = function(e) {
+          log_message("GSVA analysis failed: ", e$message)
+          NULL
+        }
+      )
+    }
 
-  # 2. Extended database enrichment
-  results$extended_enrichment <- run_extended_enrichment(
-    de_results_annotated, gene_annotation, ap, config
-  )
+    # 2. Extended database enrichment (only if we have DE results)
+    if (!is.null(de_results_annotated) && length(de_results_annotated) > 0) {
+      results$extended_enrichment <- tryCatch(
+        run_extended_enrichment(de_results_annotated, gene_annotation, ap, config),
+        error = function(e) {
+          log_message("Extended enrichment failed: ", e$message)
+          list()
+        }
+      )
+    } else {
+      log_message("No DE results available for extended enrichment. Skipping.")
+      results$extended_enrichment <- list()
+    }
 
-  # 3. Pathway activity comparison across contrasts
-  if (length(de_results_annotated) > 1) {
-    results$pathway_comparison <- compare_pathway_across_contrasts(
-      de_results_annotated, ap, config
+    # 3. Pathway activity comparison across contrasts
+    if (length(de_results_annotated) > 1) {
+      results$pathway_comparison <- tryCatch(
+        compare_pathway_across_contrasts(de_results_annotated, ap, config),
+        error = function(e) NULL
+      )
+    }
+
+    # 4. Generate visualizations
+    tryCatch(
+      plot_advanced_pathway_results(results, metadata, config),
+      error = function(e) {
+        log_message("Advanced pathway plots failed: ", e$message)
+      }
     )
-  }
 
-  # 4. Generate visualizations
-  plot_advanced_pathway_results(results, metadata, config)
+    # 5. Summary
+    results$summary <- tryCatch(
+      summarize_advanced_pathway(results, config),
+      error = function(e) list()
+    )
 
-  # 5. Summary
-  results$summary <- summarize_advanced_pathway(results, config)
+    log_message("=== Advanced Pathway Analysis Complete ===")
+    return(results)
 
-  log_message("=== Advanced Pathway Analysis Complete ===")
-  return(results)
+  }, error = function(e) {
+    log_message("Advanced pathway analysis failed: ", e$message)
+    return(NULL)
+  })
 }
 
 #' Get advanced pathway configuration with defaults
@@ -103,19 +134,19 @@ run_gsva_analysis <- function(normalized_counts, metadata, ap, config) {
   # Ensure we have gene symbols as rownames
   expr_mat <- as.matrix(normalized_counts)
 
-  # Run GSVA
+  # Run GSVA (using new API for Bioconductor 3.18+)
   gsva_scores <- tryCatch({
     log_message("  Running GSVA (method: ", ap$gsva_method, ")...")
 
-    GSVA::gsva(
-      expr = expr_mat,
-      gset.idx.list = gene_sets,
-      method = ap$gsva_method,
-      min.sz = ap$min_gene_set_size,
-      max.sz = ap$max_gene_set_size,
-      verbose = FALSE,
-      parallel.sz = 1
+    # Create parameter object using new GSVA API
+    param <- GSVA::gsvaParam(
+      exprData = expr_mat,
+      geneSets = gene_sets,
+      minSize = ap$min_gene_set_size,
+      maxSize = ap$max_gene_set_size
     )
+
+    GSVA::gsva(param, verbose = FALSE)
   }, error = function(e) {
     log_message("  GSVA failed: ", e$message)
     NULL
@@ -288,9 +319,21 @@ run_extended_enrichment <- function(de_results_annotated, gene_annotation, ap, c
 
   results <- list()
 
+  # Check if we have any DE results to process
+  if (is.null(de_results_annotated) || length(de_results_annotated) == 0) {
+    log_message("  No DE results available. Skipping extended enrichment.")
+    return(results)
+  }
+
   # For each contrast
   for (contrast_name in names(de_results_annotated)) {
     de_result <- de_results_annotated[[contrast_name]]
+
+    # Skip if de_result is NULL or empty
+    if (is.null(de_result) || nrow(de_result) == 0) {
+      log_message("  Contrast ", contrast_name, " has no results. Skipping.")
+      next
+    }
 
     log_message("  Processing contrast: ", contrast_name)
 

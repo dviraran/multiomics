@@ -743,8 +743,22 @@ run_power_analysis <- function(da_results, metadata, config, output_dir) {
     return(NULL)
   }
 
+  # Filter out NA values
+  effect_sizes <- effect_sizes[!is.na(effect_sizes) & is.finite(effect_sizes)]
+
+  if (length(effect_sizes) == 0) {
+    log_message("  No valid effect sizes for power estimation.")
+    return(NULL)
+  }
+
   median_effect <- median(effect_sizes, na.rm = TRUE)
   sd_effect <- mad(effect_sizes, na.rm = TRUE)
+
+  # Validate median_effect is usable
+ if (is.na(median_effect) || !is.finite(median_effect)) {
+    log_message("  Cannot compute valid median effect size. Skipping power analysis.")
+    return(NULL)
+  }
 
   log_message("  Current sample size per group: ", current_n)
   log_message("  Median effect size (|log2FC|): ", round(median_effect, 2))
@@ -799,6 +813,18 @@ run_power_analysis <- function(da_results, metadata, config, output_dir) {
 
 #' Calculate Power for Two-Sample t-Test
 calculate_power <- function(n, effect_size, alpha = 0.05) {
+  # Validate inputs
+
+  if (!is.numeric(n) || !is.numeric(effect_size) || !is.numeric(alpha)) {
+    return(NA_real_)
+  }
+  if (is.na(n) || is.na(effect_size) || is.na(alpha)) {
+    return(NA_real_)
+  }
+  if (n < 2 || effect_size <= 0 || alpha <= 0 || alpha >= 1) {
+    return(NA_real_)
+  }
+
   # Use approximation based on non-central t-distribution
   df <- 2 * n - 2
   ncp <- effect_size * sqrt(n / 2)  # Non-centrality parameter
@@ -811,14 +837,19 @@ calculate_power <- function(n, effect_size, alpha = 0.05) {
 
 #' Calculate Required Sample Size
 calculate_required_n <- function(effect_size, power = 0.80, alpha = 0.05) {
+  # Validate inputs
+  if (!is.numeric(effect_size) || is.na(effect_size) || effect_size <= 0) {
+    return(NA_integer_)
+  }
+
   # Binary search for required n
   for (n in seq(3, 500)) {
     current_power <- calculate_power(n, effect_size, alpha)
-    if (current_power >= power) {
+    if (!is.na(current_power) && current_power >= power) {
       return(n)
     }
   }
-  return(NA)
+  return(NA_integer_)
 }
 
 # -----------------------------------------------------------------------------

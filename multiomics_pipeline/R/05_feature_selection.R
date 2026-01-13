@@ -145,13 +145,23 @@ filter_mae_features <- function(mae_data, selected_features) {
   mae <- mae_data$mae
 
   if (inherits(mae, "MultiAssayExperiment")) {
-    # Filter each experiment
+    # Get all experiments as a list
+    exp_list <- MultiAssayExperiment::experiments(mae)
+
+    # Filter each experiment individually
     for (omic in names(selected_features)) {
-      if (omic %in% names(MultiAssayExperiment::experiments(mae))) {
+      if (omic %in% names(exp_list)) {
         sel <- selected_features[[omic]]$selected_features
-        mae <- mae[sel, , omic]
+        # Filter rows within this experiment only, preserving all experiments
+        exp_list[[omic]] <- exp_list[[omic]][sel, , drop = FALSE]
       }
     }
+
+    # Rebuild MAE with all filtered experiments preserved
+    mae <- MultiAssayExperiment::MultiAssayExperiment(
+      experiments = exp_list,
+      colData = MultiAssayExperiment::colData(mae)
+    )
   } else {
     # List structure
     for (omic in names(selected_features)) {
