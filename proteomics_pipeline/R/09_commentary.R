@@ -9,11 +9,15 @@
 #' @param qc_results QC results from run_qc_analysis()
 #' @param de_results Differential analysis results
 #' @param pathway_results Pathway analysis results
+#' @param ppi_results PPI network results
+#' @param advanced_stats Advanced statistics results
 #' @param config Configuration list
 #' @return Data frame with figure metadata
 build_figures_table <- function(qc_results = NULL,
                                  de_results = NULL,
                                  pathway_results = NULL,
+                                 ppi_results = NULL,
+                                 advanced_stats = NULL,
                                  config = NULL) {
   log_message("Building figures metadata table...")
 
@@ -263,14 +267,22 @@ build_figures_table <- function(qc_results = NULL,
 #' @param qc_results QC results for data-driven fallback
 #' @param de_results DE results for data-driven fallback
 #' @param imputed_data Imputed data for context
+#' @param ppi_results PPI network results
+#' @param advanced_stats Advanced statistics results
+#' @param output_dir Output directory for commentary files
 #' @return Data frame with commentary for each figure
 generate_all_commentary <- function(figures_tbl,
                                      config,
                                      qc_results = NULL,
                                      de_results = NULL,
-                                     imputed_data = NULL) {
+                                     imputed_data = NULL,
+                                     ppi_results = NULL,
+                                     advanced_stats = NULL,
+                                     output_dir = NULL) {
 
-  output_dir <- file.path(config$output$output_dir %||% "outputs", "commentary")
+  if (is.null(output_dir)) {
+    output_dir <- file.path(config$output$output_dir %||% "outputs", "commentary")
+  }
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   # Check if commentary is enabled

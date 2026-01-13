@@ -2,36 +2,71 @@
 # =============================================================================
 # Run All Multi-Omics Pipelines
 # =============================================================================
-# Master script to execute all four pipelines in sequence:
-# 1. RNA-seq pipeline
-# 2. Proteomics pipeline
-# 3. Metabolomics pipeline (optional)
-# 4. Multi-omics integration pipeline
+# Master script to execute all four pipelines in sequence using pipeline_runner.R
 #
 # Usage:
-#   Rscript run_all_pipelines.R [--parallel] [--skip-metabolomics] [--clean] [--no-prompt]
+#   Rscript run_all_pipelines.R [options]
 #
 # Options:
-#   --parallel          Run single-omics pipelines in parallel (requires future)
+#   --clean             Clean all targets caches before running
+#   --no-prompt         Don't prompt for cache action, reuse cache if available
 #   --skip-metabolomics Skip the metabolomics pipeline
-#   --clean             Clean all targets caches before running (skip prompt)
-#   --no-prompt         Don't prompt for cache action, use cache if available
 #   --only=PIPELINE     Run only specified pipeline (rnaseq, proteomics, metabolomics, multiomics)
 #   --run-name=NAME     Specify custom run name (default: auto-generated)
+#   --config-dir=PATH   Directory containing config files (default: auto-detect)
 #
 # Outputs are saved to: {current_dir}/runs/{dataset}_{timestamp}/
 # =============================================================================
 
-library(targets)
+# Find the multiomics root directory
+find_root <- function() {
+  # Try to get script path (works when run with Rscript)
+  args <- commandArgs(trailingOnly = FALSE)
+  script_arg <- grep("^--file=", args, value = TRUE)
+  if (length(script_arg) > 0) {
+    script_path <- sub("^--file=", "", script_arg[1])
+    script_dir <- dirname(normalizePath(script_path, mustWork = FALSE))
+    candidate <- normalizePath(file.path(script_dir, "../.."), mustWork = FALSE)
+    if (file.exists(file.path(candidate, "pipeline_runner.R"))) {
+      return(candidate)
+    }
+  }
+
+  # Try common locations relative to working directory
+  candidates <- c(
+    "..",           # If in examples/
+    "../..",        # If in examples/scripts/
+    ".",            # If in root
+    Sys.getenv("MULTIOMICS_ROOT")
+  )
+
+  for (candidate in candidates) {
+    if (candidate == "") next
+    candidate <- normalizePath(candidate, mustWork = FALSE)
+    if (file.exists(file.path(candidate, "pipeline_runner.R"))) {
+      return(candidate)
+    }
+  }
+
+  stop("Cannot find pipeline_runner.R. Run from the multiomics root or examples directory,\n",
+       "or set MULTIOMICS_ROOT environment variable.")
+}
+
+multiomics_root <- find_root()
+
+source(file.path(multiomics_root, "pipeline_runner.R"))
+
+# Null-coalescing operator
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 # Parse command line arguments
 args <- commandArgs(trailingOnly = TRUE)
-run_parallel <- "--parallel" %in% args
-skip_metabolomics <- "--skip-metabolomics" %in% args
 clean_first <- "--clean" %in% args
 no_prompt <- "--no-prompt" %in% args
+skip_metabolomics <- "--skip-metabolomics" %in% args
 only_pipeline <- NULL
 custom_run_name <- NULL
+config_dir <- NULL
 
 for (arg in args) {
   if (grepl("^--only=", arg)) {
@@ -40,133 +75,84 @@ for (arg in args) {
   if (grepl("^--run-name=", arg)) {
     custom_run_name <- sub("^--run-name=", "", arg)
   }
-}
-
-# Directories
-start_dir <- getwd()
-multiomics_root <- normalizePath(file.path(dirname(start_dir), ".."), mustWork = FALSE)
-
-# Try to find multiomics root by looking for rnaseq_pipeline
-if (!dir.exists(file.path(multiomics_root, "rnaseq_pipeline"))) {
-  # Maybe we're already in the root or examples
-  if (dir.exists(file.path(start_dir, "rnaseq_pipeline"))) {
-    multiomics_root <- start_dir
-  } else if (dir.exists(file.path(dirname(start_dir), "rnaseq_pipeline"))) {
-    multiomics_root <- dirname(start_dir)
-  } else {
-    stop("Cannot find multiomics pipelines. Please run from the examples directory or project root.")
+  if (grepl("^--config-dir=", arg)) {
+    config_dir <- sub("^--config-dir=", "", arg)
   }
 }
 
-cat("╔══════════════════════════════════════════════════════════════════╗\n")
-cat("║           Multi-Omics Pipeline Runner                            ║\n")
-cat("╚══════════════════════════════════════════════════════════════════╝\n\n")
-
-cat("Root directory:", multiomics_root, "\n")
-cat("Working directory:", start_dir, "\n")
-cat("Parallel mode:", run_parallel, "\n")
-cat("Skip metabolomics:", skip_metabolomics, "\n\n")
-
 # -----------------------------------------------------------------------------
-# Helper Functions for Run Management
+# Helper Functions
 # -----------------------------------------------------------------------------
 
-#' Detect dataset name from pipeline config
-#' @param config_path Path to config.yml
-#' @return Dataset name (e.g., "nci60", "stategra")
-detect_dataset <- function(config_path) {
-  if (!file.exists(config_path)) return("unknown")
+#' Detect dataset name from config files
+detect_dataset <- function(config_paths) {
+  for (config_path in config_paths) {
+    if (!file.exists(config_path)) next
 
-  tryCatch({
-    config <- yaml::read_yaml(config_path)
+    tryCatch({
+      config <- yaml::read_yaml(config_path)
 
-    # Try to extract from input file paths
-    input_paths <- c(
+      # Try to extract from input file paths
+      input_paths <- c(
+        config$counts_file,
+        config$metadata_file,
+        config$input_file,
+        config$intensity_file
+      )
 
-      config$counts_file,
-      config$metadata_file,
-      config$input_file,
-      config$intensity_file
-    )
-
-    for (path in input_paths) {
-      if (!is.null(path)) {
-        # Look for known dataset names in path
-        if (grepl("nci60", path, ignore.case = TRUE)) return("nci60")
-        if (grepl("stategra", path, ignore.case = TRUE)) return("stategra")
-        # Extract from path pattern like "data/datasetname/"
-        match <- regmatches(path, regexpr("data/([^/]+)/", path))
-        if (length(match) > 0) {
-          dataset <- gsub("data/|/", "", match)
-          if (nchar(dataset) > 0) return(dataset)
+      for (path in input_paths) {
+        if (!is.null(path)) {
+          if (grepl("nci60", path, ignore.case = TRUE)) return("nci60")
+          if (grepl("stategra", path, ignore.case = TRUE)) return("stategra")
+          # Extract from path pattern like "data/datasetname/"
+          match <- regmatches(path, regexpr("data/([^/]+)/", path))
+          if (length(match) > 0) {
+            dataset <- gsub("data/|/", "", match)
+            if (nchar(dataset) > 0) return(dataset)
+          }
         }
       }
-    }
-
-    return("analysis")
-  }, error = function(e) {
-    return("analysis")
-  })
+    }, error = function(e) NULL)
+  }
+  return("analysis")
 }
 
 #' Prompt user for cache action
-#' @param pipeline_name Name of the pipeline
-#' @param targets_dir Path to _targets directory
-#' @return Action: "reuse", "clean", or "skip"
-prompt_cache_action <- function(pipeline_name, targets_dir) {
+prompt_cache_action <- function(pipeline_name, pipeline_dir) {
+  targets_dir <- file.path(pipeline_dir, "_targets")
   has_cache <- dir.exists(targets_dir) && length(list.files(targets_dir)) > 0
 
-  if (!has_cache) {
-    return("run")
-  }
+  if (!has_cache) return("run")
+  if (no_prompt) return("reuse")
+  if (clean_first) return("clean")
 
-  if (no_prompt) {
-    return("reuse")
-  }
-
-  if (clean_first) {
-    return("clean")
-  }
-
-  cat(sprintf("\n┌─ %s pipeline ─────────────────────────────────────\n", toupper(pipeline_name)))
-  cat("│ Previous results found in cache.\n")
-  cat("│ What would you like to do?\n")
-  cat("│   1. Reuse cache (only run changed targets)\n")
-  cat("│   2. Clean and rerun from scratch\n")
-  cat("│   3. Skip this pipeline\n")
-  cat("└────────────────────────────────────────────────────\n")
+  cat(sprintf("\n--- %s pipeline ---\n", toupper(pipeline_name)))
+  cat("Previous results found. What would you like to do?\n")
+  cat("  1. Reuse cache (only run changed targets)\n")
+  cat("  2. Clean and rerun from scratch\n")
+  cat("  3. Skip this pipeline\n")
 
   repeat {
     choice <- readline("Enter choice (1/2/3): ")
     if (choice %in% c("1", "2", "3")) break
-    cat("Invalid choice. Please enter 1, 2, or 3.\n")
+    cat("Invalid choice.\n")
   }
 
-  switch(choice,
-    "1" = "reuse",
-    "2" = "clean",
-    "3" = "skip"
-  )
+  switch(choice, "1" = "reuse", "2" = "clean", "3" = "skip")
 }
 
 #' Collect outputs from pipeline to run directory
-#' @param pipeline_dir Source pipeline directory
-#' @param run_dir Destination run directory
-#' @param pipeline_name Name of the pipeline
 collect_outputs <- function(pipeline_dir, run_dir, pipeline_name) {
   source_outputs <- file.path(pipeline_dir, "outputs")
   dest_dir <- file.path(run_dir, pipeline_name)
 
   if (!dir.exists(source_outputs)) {
     cat("  No outputs to collect for", pipeline_name, "\n")
-    return(invisible(NULL))
+    return(invisible(0))
   }
 
-  # Create destination directory
+  dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
 
-dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
-
-  # Copy all outputs
   files <- list.files(source_outputs, recursive = TRUE, full.names = TRUE)
   for (f in files) {
     rel_path <- sub(paste0(source_outputs, "/"), "", f)
@@ -175,48 +161,11 @@ dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
     file.copy(f, dest_path, overwrite = TRUE)
   }
 
-  n_files <- length(files)
-  cat("  Collected", n_files, "files from", pipeline_name, "\n")
-
-  invisible(n_files)
+  cat("  Collected", length(files), "files from", pipeline_name, "\n")
+  invisible(length(files))
 }
 
-#' Generate run info JSON
-#' @param run_dir Run directory
-#' @param dataset Dataset name
-#' @param results Pipeline results list
-generate_run_info <- function(run_dir, dataset, results, start_time, end_time) {
-  run_info <- list(
-    run_name = basename(run_dir),
-    dataset = dataset,
-    start_time = as.character(start_time),
-    end_time = as.character(end_time),
-    duration_minutes = as.numeric(difftime(end_time, start_time, units = "mins")),
-    pipelines = lapply(results, function(r) {
-      list(
-        name = r$pipeline,
-        status = r$status,
-        duration_minutes = r$duration,
-        error = r$errors
-      )
-    }),
-    system_info = list(
-      r_version = paste(R.version$major, R.version$minor, sep = "."),
-      platform = R.version$platform,
-      hostname = Sys.info()["nodename"]
-    )
-  )
-
-  json_path <- file.path(run_dir, "run_info.json")
-  jsonlite::write_json(run_info, json_path, auto_unbox = TRUE, pretty = TRUE)
-  cat("Run info saved to:", json_path, "\n")
-}
-
-#' Create run directory with timestamp
-#' @param base_dir Base directory for runs
-#' @param dataset Dataset name
-#' @param custom_name Optional custom name
-#' @return Path to created run directory
+#' Create run directory
 create_run_directory <- function(base_dir, dataset, custom_name = NULL) {
   runs_dir <- file.path(base_dir, "runs")
   dir.create(runs_dir, recursive = TRUE, showWarnings = FALSE)
@@ -230,18 +179,15 @@ create_run_directory <- function(base_dir, dataset, custom_name = NULL) {
 
   run_dir <- file.path(runs_dir, run_name)
 
-  # Handle existing directory
-  if (dir.exists(run_dir)) {
-    cat("\nRun directory already exists:", run_dir, "\n")
+  if (dir.exists(run_dir) && !no_prompt) {
+    cat("\nRun directory exists:", run_dir, "\n")
     cat("  1. Overwrite\n")
     cat("  2. Create new with suffix\n")
     choice <- readline("Enter choice (1/2): ")
 
     if (choice == "2") {
       i <- 2
-      while (dir.exists(paste0(run_dir, "_v", i))) {
-        i <- i + 1
-      }
+      while (dir.exists(paste0(run_dir, "_v", i))) i <- i + 1
       run_dir <- paste0(run_dir, "_v", i)
     } else {
       unlink(run_dir, recursive = TRUE)
@@ -249,234 +195,158 @@ create_run_directory <- function(base_dir, dataset, custom_name = NULL) {
   }
 
   dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
-  cat("\nRun directory:", run_dir, "\n\n")
+  run_dir
+}
 
-  return(run_dir)
+#' Generate run info JSON
+generate_run_info <- function(run_dir, dataset, results, start_time, end_time) {
+  run_info <- list(
+    run_name = basename(run_dir),
+    dataset = dataset,
+    start_time = as.character(start_time),
+    end_time = as.character(end_time),
+    duration_minutes = as.numeric(difftime(end_time, start_time, units = "mins")),
+    pipelines = lapply(results, function(r) {
+      list(name = r$pipeline, status = r$status, duration_minutes = r$duration, error = r$error)
+    }),
+    system_info = list(
+      r_version = paste(R.version$major, R.version$minor, sep = "."),
+      platform = R.version$platform
+    )
+  )
+
+  jsonlite::write_json(run_info, file.path(run_dir, "run_info.json"),
+                       auto_unbox = TRUE, pretty = TRUE)
 }
 
 # -----------------------------------------------------------------------------
-# Pipeline Execution Function
+# Main Execution
 # -----------------------------------------------------------------------------
 
-#' Run a pipeline with optional custom config file
-#'
-#' @param pipeline_name Name of the pipeline (for display)
-#' @param pipeline_dir Path to the pipeline directory
-#' @param config_file Optional path to custom config file (absolute path)
-#' @param run_dir Optional directory to collect outputs
-#' @param cache_action Optional cache action: "reuse", "clean", or "skip"
-#' @return List with pipeline status information
-run_pipeline <- function(pipeline_name, pipeline_dir, config_file = NULL,
-                         run_dir = NULL, cache_action = NULL) {
-  cat("\n", rep("=", 70), "\n", sep = "")
-  cat("  Running:", toupper(pipeline_name), "pipeline\n")
-  cat("  Directory:", pipeline_dir, "\n")
-  if (!is.null(config_file)) {
-    cat("  Config:", config_file, "\n")
-  }
-  cat(rep("=", 70), "\n\n", sep = "")
+cat("
+================================================================================
+                      Multi-Omics Pipeline Runner
+================================================================================
+")
 
-  # Determine cache action if not provided
-  targets_dir <- file.path(pipeline_dir, "_targets")
-  if (is.null(cache_action)) {
-    cache_action <- prompt_cache_action(pipeline_name, targets_dir)
-  }
+start_dir <- getwd()
+cat("Working directory:", start_dir, "\n")
+cat("Multiomics root:", multiomics_root, "\n\n")
 
-  # Handle skip
-  if (cache_action == "skip") {
-    cat("Skipping", pipeline_name, "pipeline\n")
-    return(list(
-      pipeline = pipeline_name,
-      status = "skipped",
-      duration = 0,
-      errors = NULL
-    ))
-  }
+# Define pipelines and their config files
+pipeline_names <- c("rnaseq", "proteomics", "metabolomics", "multiomics")
 
-  start_time <- Sys.time()
-
-  # Change to pipeline directory (required for targets to find _targets.R)
-  original_dir <- getwd()
-  setwd(pipeline_dir)
-
-  # Set environment variable for custom config if provided
-  if (!is.null(config_file)) {
-    # Convert to absolute path if relative
-    if (!startsWith(config_file, "/")) {
-      config_file <- normalizePath(file.path(original_dir, config_file), mustWork = FALSE)
-    }
-    Sys.setenv(PIPELINE_CONFIG = config_file)
-    cat("Using config:", config_file, "\n")
-  }
-
-  tryCatch({
-    # Clean if requested
-    if (cache_action == "clean") {
-      cat("Cleaning targets cache...\n")
-      tar_destroy(ask = FALSE)
-    }
-
-    # Run the pipeline
-    cat("Starting pipeline...\n\n")
-    tar_make()
-
-    end_time <- Sys.time()
-    duration <- difftime(end_time, start_time, units = "mins")
-
-    cat("\n✓", pipeline_name, "pipeline completed in", round(duration, 2), "minutes\n")
-
-    # Collect outputs to run directory if specified
-    if (!is.null(run_dir)) {
-      collect_outputs(pipeline_dir, run_dir, pipeline_name)
-    }
-
-    # Return success
-    return(list(
-      pipeline = pipeline_name,
-      status = "success",
-      duration = as.numeric(duration),
-      errors = NULL
-    ))
-
-  }, error = function(e) {
-    cat("\n✗ Error in", pipeline_name, "pipeline:", e$message, "\n")
-
-    # Still collect partial outputs if run_dir specified
-    if (!is.null(run_dir)) {
-      tryCatch({
-        collect_outputs(pipeline_dir, run_dir, pipeline_name)
-      }, error = function(e2) NULL)
-    }
-
-    return(list(
-      pipeline = pipeline_name,
-      status = "error",
-      duration = NA,
-      errors = e$message
-    ))
-
-  }, finally = {
-    # Clean up environment variable
-    Sys.unsetenv("PIPELINE_CONFIG")
-    setwd(original_dir)
-  })
-}
-
-# -----------------------------------------------------------------------------
-# Define Pipeline Execution Order
-# -----------------------------------------------------------------------------
-
-pipelines <- list(
-  rnaseq = file.path(multiomics_root, "rnaseq_pipeline"),
-  proteomics = file.path(multiomics_root, "proteomics_pipeline"),
-  metabolomics = file.path(multiomics_root, "metabolomics_pipeline"),
-  multiomics = file.path(multiomics_root, "multiomics_pipeline")
-)
-
-# Filter pipelines based on options
 if (!is.null(only_pipeline)) {
-  if (!only_pipeline %in% names(pipelines)) {
-    stop("Unknown pipeline: ", only_pipeline, "\nValid options: ", paste(names(pipelines), collapse = ", "))
+  if (!only_pipeline %in% pipeline_names) {
+    stop("Invalid pipeline: ", only_pipeline, ". Choose from: ", paste(pipeline_names, collapse = ", "))
   }
-  pipelines <- pipelines[only_pipeline]
-  cat("Running only:", only_pipeline, "pipeline\n\n")
+  pipeline_names <- only_pipeline
 }
 
-if (skip_metabolomics && is.null(only_pipeline)) {
-  pipelines$metabolomics <- NULL
-  cat("Skipping metabolomics pipeline\n\n")
+if (skip_metabolomics) {
+  pipeline_names <- setdiff(pipeline_names, "metabolomics")
 }
 
-# -----------------------------------------------------------------------------
-# Detect Dataset and Create Run Directory
-# -----------------------------------------------------------------------------
+# Build pipeline info
+pipelines <- list()
+config_files <- list()
 
-# Detect dataset from first available pipeline config
-dataset_name <- "analysis"
-for (pname in c("rnaseq", "proteomics", "metabolomics")) {
-  if (pname %in% names(pipelines)) {
-    config_path <- file.path(pipelines[[pname]], "config.yml")
-    dataset_name <- detect_dataset(config_path)
-    if (dataset_name != "unknown" && dataset_name != "analysis") break
+# Resolve config_dir to absolute path if provided
+if (!is.null(config_dir)) {
+  # If relative path, resolve relative to current working directory
+  if (!grepl("^/", config_dir) && !grepl("^~", config_dir)) {
+    config_dir <- normalizePath(file.path(start_dir, config_dir), mustWork = FALSE)
+  } else {
+    config_dir <- normalizePath(config_dir, mustWork = FALSE)
+  }
+  cat("Config directory:", config_dir, "\n")
+
+  if (!dir.exists(config_dir)) {
+    stop("Config directory not found: ", config_dir)
   }
 }
 
+for (name in pipeline_names) {
+  pipeline_dir <- file.path(multiomics_root, paste0(name, "_pipeline"))
+  pipelines[[name]] <- pipeline_dir
+
+  # Try to find config file
+  if (!is.null(config_dir)) {
+    cfg <- file.path(config_dir, paste0(name, "_config.yml"))
+    if (!file.exists(cfg)) {
+      # Also try without _config suffix
+      cfg <- file.path(config_dir, paste0(name, ".yml"))
+    }
+    if (!file.exists(cfg)) {
+      cat("  Warning: No config found for", name, "in", config_dir, "\n")
+      cfg <- file.path(pipeline_dir, "config.yml")
+    }
+  } else {
+    cfg <- file.path(pipeline_dir, "config.yml")
+  }
+  config_files[[name]] <- if (file.exists(cfg)) normalizePath(cfg) else NULL
+}
+
+# Detect dataset
+dataset_name <- detect_dataset(unlist(config_files))
 cat("Detected dataset:", dataset_name, "\n")
 
-# Create run directory in current working directory
+# Create run directory
 run_dir <- create_run_directory(start_dir, dataset_name, custom_run_name)
+cat("Run directory:", run_dir, "\n\n")
 
-# -----------------------------------------------------------------------------
-# Prompt for Cache Actions (before execution)
-# -----------------------------------------------------------------------------
+# Prompt for cache actions (before execution)
+cat("================================================================================\n")
+cat("                           CACHE STATUS CHECK\n")
+cat("================================================================================\n")
 
-# If not in parallel mode, prompt for each pipeline upfront
 cache_actions <- list()
-if (!run_parallel) {
-  cat("═══════════════════════════════════════════════════════════════════\n")
-  cat("                     CACHE STATUS CHECK                            \n")
-  cat("═══════════════════════════════════════════════════════════════════\n")
-
-  for (name in names(pipelines)) {
-    targets_dir <- file.path(pipelines[[name]], "_targets")
-    cache_actions[[name]] <- prompt_cache_action(name, targets_dir)
-  }
-  cat("\n")
+for (name in pipeline_names) {
+  cache_actions[[name]] <- prompt_cache_action(name, pipelines[[name]])
 }
 
-# -----------------------------------------------------------------------------
-# Execute Pipelines
-# -----------------------------------------------------------------------------
+# Execute pipelines
+cat("\n================================================================================\n")
+cat("                           EXECUTING PIPELINES\n")
+cat("================================================================================\n")
 
 results <- list()
 overall_start <- Sys.time()
 
-if (run_parallel && length(pipelines) > 1 && is.null(only_pipeline)) {
-  # Run single-omics pipelines in parallel, then multiomics
-  cat("Running single-omics pipelines in parallel...\n")
-  cat("Note: In parallel mode, cache will be reused if available.\n\n")
+for (name in pipeline_names) {
+  action <- cache_actions[[name]]
 
-  if (requireNamespace("future", quietly = TRUE) &&
-      requireNamespace("future.apply", quietly = TRUE)) {
-
-    library(future)
-    library(future.apply)
-
-    # Set up parallel workers
-    plan(multisession, workers = min(3, length(pipelines) - 1))
-
-    # Run single-omics pipelines in parallel
-    single_omics <- pipelines[names(pipelines) != "multiomics"]
-
-    # Determine cache action for parallel runs
-    parallel_cache_action <- if (clean_first) "clean" else "reuse"
-
-    single_results <- future_lapply(names(single_omics), function(name) {
-      run_pipeline(name, single_omics[[name]], run_dir, parallel_cache_action)
-    }, future.seed = TRUE)
-
-    names(single_results) <- names(single_omics)
-    results <- c(results, single_results)
-
-    # Reset to sequential
-    plan(sequential)
-
-    # Run multiomics last (depends on single-omics outputs)
-    if ("multiomics" %in% names(pipelines)) {
-      results$multiomics <- run_pipeline("multiomics", pipelines$multiomics, run_dir, parallel_cache_action)
-    }
-
-  } else {
-    cat("Warning: future package not available. Running sequentially.\n")
-    run_parallel <- FALSE
+  if (action == "skip") {
+    cat("\nSkipping", name, "pipeline\n")
+    results[[name]] <- list(pipeline = name, status = "skipped", duration = 0, error = NULL)
+    next
   }
-}
 
-if (!run_parallel) {
-  # Run pipelines sequentially with pre-determined cache actions
-  for (name in names(pipelines)) {
-    results[[name]] <- run_pipeline(name, pipelines[[name]], run_dir, cache_actions[[name]])
-  }
+  clean <- (action == "clean")
+  config <- config_files[[name]]
+
+  cat("\n")
+  start_time <- Sys.time()
+
+  # Use run_omics_pipeline from pipeline_runner.R
+  result <- tryCatch({
+    run_omics_pipeline(name, config, clean)
+  }, error = function(e) {
+    list(status = "error", error = e$message)
+  })
+
+  end_time <- Sys.time()
+  duration <- as.numeric(difftime(end_time, start_time, units = "mins"))
+
+  results[[name]] <- list(
+    pipeline = name,
+    status = result$status,
+    duration = duration,
+    error = result$error %||% NULL
+  )
+
+  # Collect outputs
+  collect_outputs(pipelines[[name]], run_dir, name)
 }
 
 overall_end <- Sys.time()
@@ -486,10 +356,9 @@ overall_duration <- difftime(overall_end, overall_start, units = "mins")
 # Summary Report
 # -----------------------------------------------------------------------------
 
-cat("\n")
-cat("╔══════════════════════════════════════════════════════════════════╗\n")
-cat("║                    PIPELINE EXECUTION SUMMARY                    ║\n")
-cat("╚══════════════════════════════════════════════════════════════════╝\n\n")
+cat("\n================================================================================\n")
+cat("                           PIPELINE SUMMARY\n")
+cat("================================================================================\n\n")
 
 summary_df <- data.frame(
   Pipeline = character(),
@@ -507,74 +376,50 @@ for (name in names(results)) {
     stringsAsFactors = FALSE
   ))
 
-  status_icon <- if (r$status == "success") "✓" else if (r$status == "skipped") "○" else "✗"
-  cat(sprintf("  %s %-15s %s (%.1f min)\n",
-              status_icon, r$pipeline, r$status,
-              ifelse(is.na(r$duration), 0, r$duration)))
+  icon <- switch(r$status, "success" = "+", "skipped" = "o", "-")
+  cat(sprintf("  [%s] %-15s %s (%.1f min)\n", icon, r$pipeline, r$status, r$duration))
 }
 
-cat("\n")
-cat("Total execution time:", round(overall_duration, 2), "minutes\n")
+cat("\nTotal execution time:", round(as.numeric(overall_duration), 2), "minutes\n")
 
-# Count successes/failures
 n_success <- sum(sapply(results, function(x) x$status == "success"))
 n_skipped <- sum(sapply(results, function(x) x$status == "skipped"))
-n_total <- length(results)
-
-cat("Pipelines completed:", n_success, "/", n_total)
+cat("Pipelines completed:", n_success, "/", length(results))
 if (n_skipped > 0) cat(" (", n_skipped, " skipped)", sep = "")
 cat("\n")
 
-# List any errors
-errors <- sapply(results, function(x) x$errors)
-errors <- errors[!sapply(errors, is.null)]
-
+# Show errors
+errors <- Filter(function(x) !is.null(x$error), results)
 if (length(errors) > 0) {
-  cat("\nErrors encountered:\n")
-  for (name in names(errors)) {
-    cat("  -", name, ":", errors[[name]], "\n")
+  cat("\nErrors:\n")
+  for (r in errors) {
+    cat("  -", r$pipeline, ":", r$error, "\n")
   }
 }
 
-# -----------------------------------------------------------------------------
-# Save Run Info and Summary
-# -----------------------------------------------------------------------------
-
-# Generate run_info.json
+# Save outputs
 generate_run_info(run_dir, dataset_name, results, overall_start, overall_end)
+write.csv(summary_df, file.path(run_dir, "pipeline_summary.csv"), row.names = FALSE)
 
-# Save summary CSV to run directory
-summary_file <- file.path(run_dir, "pipeline_summary.csv")
-write.csv(summary_df, summary_file, row.names = FALSE)
+# Output locations
+cat("\n================================================================================\n")
+cat("                           OUTPUT LOCATIONS\n")
+cat("================================================================================\n\n")
 
-# -----------------------------------------------------------------------------
-# Output Locations
-# -----------------------------------------------------------------------------
+cat("All outputs saved to:\n  ", run_dir, "\n\n")
 
-cat("\n")
-cat("═══════════════════════════════════════════════════════════════════\n")
-cat("                        OUTPUT LOCATIONS                           \n")
-cat("═══════════════════════════════════════════════════════════════════\n\n")
-
-cat("All outputs saved to:\n")
-cat("  ", run_dir, "\n\n")
-
-# List available reports in run directory
-for (name in names(pipelines)) {
+for (name in pipeline_names) {
   if (results[[name]]$status == "skipped") next
-
   report_dir <- file.path(run_dir, name)
   if (dir.exists(report_dir)) {
-    # Find HTML reports
     reports <- list.files(report_dir, pattern = "\\.html$", recursive = TRUE, full.names = TRUE)
     if (length(reports) > 0) {
-      cat(name, "report:\n")
-      cat("  ", reports[1], "\n")
+      cat(name, "report:\n  ", reports[1], "\n")
     }
   }
 }
 
-cat("\nRun summary:", summary_file, "\n")
+cat("\nRun summary:", file.path(run_dir, "pipeline_summary.csv"), "\n")
 cat("Run metadata:", file.path(run_dir, "run_info.json"), "\n")
 
-cat("\n✓ All done!\n")
+cat("\nDone!\n")
