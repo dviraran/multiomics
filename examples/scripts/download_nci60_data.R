@@ -34,46 +34,58 @@ rna_url <- "https://discover.nci.nih.gov/cellminer/download/processeddataset/nci
 
 tryCatch({
   rna_zip <- file.path(data_dir, "nci60_rnaseq.zip")
-  rna_file <- file.path(data_dir, "nci60_rnaseq_tpm.txt")
+  rna_xls <- file.path(data_dir, "output", "RNA__RNA_seq_composite_expression.xls")
+  output_file <- file.path(data_dir, "rna_counts_matrix.csv")
 
-  # Download if not exists
-  if (!file.exists(rna_file)) {
+  # Download and process if output doesn't exist
+  if (!file.exists(output_file)) {
     cat("  Downloading from CellMiner...\n")
     download.file(rna_url, rna_zip, mode = "wb", quiet = FALSE)
 
-    # Unzip and find the data file
+    # Unzip - extracts to output/ subdirectory
     unzip(rna_zip, exdir = data_dir)
-
-    # Find the extracted txt file
-    txt_files <- list.files(data_dir, pattern = "\\.txt$", full.names = TRUE)
-    if (length(txt_files) > 0) {
-      file.rename(txt_files[1], rna_file)
-    }
 
     # Clean up zip
     unlink(rna_zip)
     cat("  Downloaded RNA-seq data\n")
+
+    # The CellMiner zip extracts an .xls file (actually tab-delimited text)
+    if (!file.exists(rna_xls)) {
+      # Try to find the xls file anywhere in data_dir
+      xls_files <- list.files(data_dir, pattern = "\\.xls$",
+                              full.names = TRUE, recursive = TRUE)
+      if (length(xls_files) > 0) {
+        rna_xls <- xls_files[1]
+      } else {
+        stop("Could not find extracted data file")
+      }
+    }
+
+    # Process into standard format
+    # The .xls is actually tab-delimited text with header rows to skip
+    rna_raw <- read.delim(rna_xls, skip = 10, check.names = FALSE)
+
+    # Clean up - first column is gene symbol
+    colnames(rna_raw)[1] <- "gene_symbol"
+
+    # Remove metadata rows and convert to matrix format
+    rna_matrix <- rna_raw %>%
+      filter(!is.na(gene_symbol) & gene_symbol != "") %>%
+      column_to_rownames("gene_symbol")
+
+    # Clean column names (cell line names)
+    colnames(rna_matrix) <- gsub(":", "_", colnames(rna_matrix))
+
+    # Save processed
+    write.csv(rna_matrix, output_file)
+    cat("  Processed RNA-seq matrix:", nrow(rna_matrix), "genes x", ncol(rna_matrix), "samples\n")
+
+    # Clean up extracted folders
+    unlink(file.path(data_dir, "output"), recursive = TRUE)
+
   } else {
     cat("  RNA-seq data already exists, skipping\n")
   }
-
-  # Process into standard format
-  rna_raw <- read.delim(rna_file, skip = 10, check.names = FALSE)
-
-  # Clean up - first column is gene symbol
-  colnames(rna_raw)[1] <- "gene_symbol"
-
-  # Remove metadata rows and convert to matrix format
-  rna_matrix <- rna_raw %>%
-    filter(!is.na(gene_symbol) & gene_symbol != "") %>%
-    column_to_rownames("gene_symbol")
-
-  # Clean column names (cell line names)
-  colnames(rna_matrix) <- gsub(":", "_", colnames(rna_matrix))
-
-  # Save processed
-  write.csv(rna_matrix, file.path(data_dir, "rna_counts_matrix.csv"))
-  cat("  Processed RNA-seq matrix:", nrow(rna_matrix), "genes x", ncol(rna_matrix), "samples\n")
 
 }, error = function(e) {
   cat("  Note: Could not download RNA-seq from CellMiner.\n")
