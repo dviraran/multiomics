@@ -19,17 +19,23 @@ library(targets)
 
 # Find the multiomics root directory
 find_multiomics_root <- function() {
+  # Try to get path from sourced file location first
+  script_path <- tryCatch({
+    # Works when file is being sourced
+    dirname(sys.frame(1)$ofile)
+  }, error = function(e) NULL)
+
   # Try common locations
   candidates <- c(
     Sys.getenv("MULTIOMICS_ROOT"),
-    file.path(dirname(sys.frame(1)$ofile), "..", ".."),  # If sourced from examples/scripts
+    script_path,  # If sourced, use the script's directory
     ".",
     "..",
     "../.."
   )
 
   for (candidate in candidates) {
-    if (candidate == "") next
+    if (is.null(candidate) || candidate == "") next
     candidate <- normalizePath(candidate, mustWork = FALSE)
     if (dir.exists(file.path(candidate, "rnaseq_pipeline"))) {
       return(candidate)
