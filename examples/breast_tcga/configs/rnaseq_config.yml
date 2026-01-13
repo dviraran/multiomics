@@ -1,0 +1,25 @@
+counts_file: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/mrna_counts_matrix.csv
+metadata_file: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/metadata.csv
+sample_id_column: sample_id
+condition_column: subtype
+design_formula: ~ subtype
+contrasts:
+- Basal - LumA
+reference_level: LumA
+organism: Homo sapiens
+gene_id_type: symbol
+strip_ensembl_version: no
+annotation_source: auto
+min_count: 10.0
+min_samples: 3.0
+alpha: 0.05
+lfc_threshold: 0.0
+outlier_sd_threshold: 3.0
+pathway_database:
+- GO
+- KEGG
+pathway_method: fgsea
+pathway_min_size: 10.0
+pathway_max_size: 500.0
+commentary_enabled: yes
+commentary_backend: none

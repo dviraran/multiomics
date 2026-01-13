@@ -231,8 +231,8 @@ multiomics_config <- list(
 
   feature_selection = list(
     transcriptomics = list(
-      strategy = "variance",  # Use top variable genes
-      top_n_variance = 500  # Use all 520 genes
+      strategy = "all",  # Use all 200 genes
+      top_n_variance = 200
     ),
     proteomics = list(
       strategy = "all",  # Use all 142 proteins

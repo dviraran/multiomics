@@ -1,0 +1,59 @@
+global:
+  omics_present:
+  - transcriptomics
+  - proteomics
+  organism: Homo sapiens
+  metadata: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/metadata.csv
+  sample_id_column: sample_id
+design:
+  condition_column: subtype
+  design_formula: ~ subtype
+  contrasts:
+  - Basal - LumA
+  reference_level: LumA
+transcriptomics:
+  mode: preprocessed
+  preprocessed:
+    normalized_matrix: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/mrna_normalized_matrix.csv
+  id_type: symbol
+proteomics:
+  mode: preprocessed
+  preprocessed:
+    normalized_matrix: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/protein_intensity_matrix.csv
+  id_type: symbol
+harmonization:
+  sample_mode: intersection
+  duplicate_strategy: keep_max_mean
+feature_selection:
+  transcriptomics:
+    strategy: all
+    top_n_variance: 200.0
+  proteomics:
+    strategy: all
+    top_n_variance: 150.0
+integration:
+  methods:
+  - MOFA2
+  - DIABLO
+  mofa2:
+    num_factors: 5.0
+    convergence_mode: fast
+    seed: 42.0
+  diablo:
+    ncomp: 3.0
+    design_matrix: full
+    cv_folds: 5.0
+    cv_repeats: 5.0
+    min_samples_per_group: 10.0
+enrichment:
+  run_enrichment: yes
+  methods: ora
+  ora_pvalue: 0.05
+  min_set_size: 5.0
+  max_set_size: 500.0
+output:
+  output_dir: outputs
+  report_format: html
+commentary:
+  enabled: yes
+  backend: none

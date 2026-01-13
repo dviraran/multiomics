@@ -1,0 +1,53 @@
+input:
+  quant_matrix: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/protein_intensity_matrix.csv
+  metadata: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/metadata.csv
+  sample_id_column: sample_id
+  organism: Homo sapiens
+  feature_id_type: gene_symbol
+  feature_level: protein
+  mapping_file: /Users/dviraran/Documents/multiomics/examples/data/breast_tcga/protein_id_mapping.csv
+design:
+  condition_column: subtype
+  design_formula: ~ subtype
+  contrasts:
+  - Basal - LumA
+  reference_level: LumA
+processing:
+  zeros_as_na: yes
+  log_transform: no
+  normalization_method: none
+filtering:
+  global_min_presence: 0.5
+  group_min_presence: 0.7
+  low_intensity_quantile: 0.0
+imputation:
+  method: knn
+  knn_k: 10.0
+qc:
+  n_pca_components: 10.0
+  outlier_sd_threshold: 3.0
+  min_sample_correlation: 0.7
+  run_umap: yes
+  umap_n_neighbors: 15.0
+  umap_min_dist: 0.1
+differential:
+  method: limma
+  adj_pvalue_threshold: 0.05
+  log2fc_threshold: 0.5
+pathway:
+  run_pathway_analysis: yes
+  databases:
+  - GO
+  - KEGG
+  go_ontologies:
+  - BP
+  - MF
+  ora_pvalue_threshold: 0.05
+  min_set_size: 5.0
+  max_set_size: 500.0
+output:
+  output_dir: outputs
+  report_format: html
+commentary:
+  enabled: yes
+  backend: none
