@@ -12,7 +12,22 @@ This directory contains scripts to run all four multi-omics pipelines on real pu
 setwd("/path/to/multiomics/examples")
 ```
 
-### Example 1: NCI-60 Human Cancer Cell Lines
+### Example 1: TCGA Breast Cancer (RECOMMENDED)
+
+This dataset uses **real gene symbols** that work with pathway analysis (GO, KEGG, Reactome).
+
+```r
+# Step 1: Download TCGA breast cancer data from mixOmics
+source("scripts/download_breast_tcga_data.R")
+
+# Step 2: Create pipeline configs
+source("scripts/setup_breast_tcga_configs.R")
+
+# Step 3: Run all pipelines
+source("scripts/run_all_pipelines.R")
+```
+
+### Example 2: NCI-60 Human Cancer Cell Lines
 
 ```r
 # Step 1: Download example data
@@ -25,7 +40,7 @@ source("scripts/setup_nci60_configs.R")
 source("scripts/run_all_pipelines.R")
 ```
 
-### Example 2: STATegra Mouse B-cell Differentiation
+### Example 3: STATegra Mouse B-cell Differentiation
 
 ```r
 # Step 1: Download mouse data
@@ -77,7 +92,39 @@ source("scripts/reset_configs.R")
 
 ---
 
-## Dataset 1: NCI-60 Cancer Cell Line Panel (Human)
+## Dataset 1: TCGA Breast Cancer (RECOMMENDED)
+
+The breast.TCGA dataset from the mixOmics Bioconductor package contains matched multi-omics data from 150 breast cancer patients. **This is the recommended dataset for testing** because it uses real gene symbols that work with pathway analysis.
+
+### Why This Dataset?
+
+- **Real gene symbols** (BRCA1, TP53, ESR1, etc.) - works with GO, KEGG, Reactome
+- **Perfectly matched samples** across all omics types
+- **Biologically meaningful** comparison (Basal vs Luminal subtypes)
+- **Easy download** - single R command from Bioconductor
+
+### Data Contents
+
+| Omics | Features | IDs |
+|-------|----------|-----|
+| mRNA | 520 genes | Gene symbols |
+| miRNA | 184 miRNAs | miRBase IDs |
+| Proteomics (RPPA) | 142 proteins | Gene symbols |
+
+### Analysis Design
+
+- **Organism**: Homo sapiens
+- **Samples**: 150 breast cancer patients
+- **Subtypes**: Basal (45), Her2 (30), LumA (75)
+- **Contrast**: `Basal - LumA` (aggressive vs good prognosis)
+
+### Reference
+
+TCGA Network (2012) "Comprehensive molecular portraits of human breast tumours" *Nature* 490:61-70
+
+---
+
+## Dataset 2: NCI-60 Cancer Cell Line Panel (Human)
 
 The NCI-60 is a panel of 60 human cancer cell lines derived from 9 tissue types:
 - Breast (5 lines)
@@ -107,7 +154,7 @@ The NCI-60 is a panel of 60 human cancer cell lines derived from 9 tissue types:
 
 ---
 
-## Dataset 2: STATegra B-cell Differentiation (Mouse)
+## Dataset 3: STATegra B-cell Differentiation (Mouse)
 
 The STATegra dataset is a comprehensive multi-omics study of mouse pre-B-cell differentiation using the B3 cell line model.
 
@@ -139,6 +186,7 @@ Gomez-Cabrero et al. (2019) "STATegra, a comprehensive multi-omics dataset of B-
 
 | Script | Description |
 |--------|-------------|
+| `download_breast_tcga_data.R` | Downloads TCGA breast cancer data (RECOMMENDED) |
 | `download_nci60_data.R` | Downloads human NCI-60 data |
 | `download_stategra_data.R` | Downloads mouse STATegra data |
 
@@ -146,6 +194,7 @@ Gomez-Cabrero et al. (2019) "STATegra, a comprehensive multi-omics dataset of B-
 
 | Script | Description |
 |--------|-------------|
+| `setup_breast_tcga_configs.R` | Configures pipelines for TCGA breast cancer |
 | `setup_nci60_configs.R` | Configures pipelines for NCI-60 |
 | `setup_stategra_configs.R` | Configures pipelines for STATegra |
 | `reset_configs.R` | Resets all configs to defaults |
