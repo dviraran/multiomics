@@ -258,10 +258,22 @@ create_run_directory <- function(base_dir, dataset, custom_name = NULL) {
 # Pipeline Execution Function
 # -----------------------------------------------------------------------------
 
-run_pipeline <- function(pipeline_name, pipeline_dir, run_dir = NULL, cache_action = NULL) {
+#' Run a pipeline with optional custom config file
+#'
+#' @param pipeline_name Name of the pipeline (for display)
+#' @param pipeline_dir Path to the pipeline directory
+#' @param config_file Optional path to custom config file (absolute path)
+#' @param run_dir Optional directory to collect outputs
+#' @param cache_action Optional cache action: "reuse", "clean", or "skip"
+#' @return List with pipeline status information
+run_pipeline <- function(pipeline_name, pipeline_dir, config_file = NULL,
+                         run_dir = NULL, cache_action = NULL) {
   cat("\n", rep("=", 70), "\n", sep = "")
   cat("  Running:", toupper(pipeline_name), "pipeline\n")
   cat("  Directory:", pipeline_dir, "\n")
+  if (!is.null(config_file)) {
+    cat("  Config:", config_file, "\n")
+  }
   cat(rep("=", 70), "\n\n", sep = "")
 
   # Determine cache action if not provided
@@ -283,9 +295,19 @@ run_pipeline <- function(pipeline_name, pipeline_dir, run_dir = NULL, cache_acti
 
   start_time <- Sys.time()
 
-  # Change to pipeline directory
+  # Change to pipeline directory (required for targets to find _targets.R)
   original_dir <- getwd()
   setwd(pipeline_dir)
+
+  # Set environment variable for custom config if provided
+  if (!is.null(config_file)) {
+    # Convert to absolute path if relative
+    if (!startsWith(config_file, "/")) {
+      config_file <- normalizePath(file.path(original_dir, config_file), mustWork = FALSE)
+    }
+    Sys.setenv(PIPELINE_CONFIG = config_file)
+    cat("Using config:", config_file, "\n")
+  }
 
   tryCatch({
     # Clean if requested
@@ -334,6 +356,8 @@ run_pipeline <- function(pipeline_name, pipeline_dir, run_dir = NULL, cache_acti
     ))
 
   }, finally = {
+    # Clean up environment variable
+    Sys.unsetenv("PIPELINE_CONFIG")
     setwd(original_dir)
   })
 }

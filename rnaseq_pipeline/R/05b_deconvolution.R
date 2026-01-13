@@ -329,34 +329,42 @@ run_xcell2_mouse <- function(expr_matrix, reference, config) {
 
 #' Get xCell2 Reference Object
 get_xcell2_reference <- function(reference_name) {
-  # Try multiple approaches for xCell2 API compatibility
+  # New xCell2 API uses data objects like "BlueprintEncode.xCell2Ref"
   ref_obj <- NULL
 
-  # Approach 1: Try xCell2ref function (older API)
+  # Approach 1: Load from package data (new API - xCell2 >= 2.0)
+  ref_obj <- tryCatch({
+    data_env <- new.env()
+    # Reference names are like "BlueprintEncode.xCell2Ref"
+    data(list = reference_name, package = "xCell2", envir = data_env)
+    get(reference_name, envir = data_env)
+  }, error = function(e) NULL)
+
+  # Approach 2: Try older naming convention
+  if (is.null(ref_obj)) {
+    ref_obj <- tryCatch({
+      data_env <- new.env()
+      # Try without .xCell2Ref suffix
+      base_name <- sub("\\.xCell2Ref$", "", reference_name)
+      data(list = base_name, package = "xCell2", envir = data_env)
+      get(base_name, envir = data_env)
+    }, error = function(e) NULL)
+  }
+
+  # Approach 3: Try getXCell2Ref function (older API)
   if (is.null(ref_obj)) {
     ref_obj <- tryCatch({
       if (exists("getXCell2Ref", where = asNamespace("xCell2"), mode = "function")) {
-        xCell2::getXCell2Ref(reference_name)
+        base_name <- sub("\\.xCell2Ref$", "", reference_name)
+        xCell2::getXCell2Ref(base_name)
       } else {
         NULL
       }
     }, error = function(e) NULL)
   }
 
-  # Approach 2: Try xCell2Ref data object (some versions)
   if (is.null(ref_obj)) {
-    ref_obj <- tryCatch({
-      # Some versions have pre-built reference objects
-      data_env <- new.env()
-      data(list = paste0("xCell2_", reference_name), package = "xCell2", envir = data_env)
-      get(paste0("xCell2_", reference_name), envir = data_env)
-    }, error = function(e) NULL)
-  }
-
-  # Approach 3: Run without explicit reference (let xCell2 use default)
-  if (is.null(ref_obj)) {
-    log_message("  Could not load reference '", reference_name, "'. Will use xCell2 defaults.")
-    return(NULL)  # Return NULL to signal caller to use default approach
+    log_message("  Could not load reference '", reference_name, "'.")
   }
 
   return(ref_obj)

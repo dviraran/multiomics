@@ -372,8 +372,15 @@ compute_protein_effect_size <- function(protein, expr_data, conditions, ref_leve
 
 #' Compute Hedge's g (Bias-Corrected Cohen's d)
 compute_hedges_g <- function(group1, group2) {
+  # Remove NAs
+  group1 <- group1[!is.na(group1)]
+  group2 <- group2[!is.na(group2)]
+
   n1 <- length(group1)
   n2 <- length(group2)
+
+  # Need at least 2 in each group
+  if (n1 < 2 || n2 < 2) return(NA_real_)
 
   mean1 <- mean(group1, na.rm = TRUE)
   mean2 <- mean(group2, na.rm = TRUE)
@@ -381,9 +388,22 @@ compute_hedges_g <- function(group1, group2) {
   # Pooled SD
   var1 <- var(group1, na.rm = TRUE)
   var2 <- var(group2, na.rm = TRUE)
-  pooled_sd <- sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
 
-  if (pooled_sd == 0) return(NA)
+  # Validate variances
+  if (is.na(var1) || is.na(var2) || !is.finite(var1) || !is.finite(var2)) {
+    return(NA_real_)
+  }
+
+  pooled_var <- ((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2)
+
+  # Validate before sqrt
+  if (is.na(pooled_var) || !is.finite(pooled_var) || pooled_var < 0) {
+    return(NA_real_)
+  }
+
+  pooled_sd <- sqrt(pooled_var)
+
+  if (pooled_sd == 0 || !is.finite(pooled_sd)) return(NA_real_)
 
   # Cohen's d
   d <- (mean2 - mean1) / pooled_sd

@@ -134,6 +134,20 @@ run_gsva_analysis <- function(normalized_counts, metadata, ap, config) {
   # Ensure we have gene symbols as rownames
   expr_mat <- as.matrix(normalized_counts)
 
+  # Convert to gene symbols if needed (MSigDB uses gene symbols)
+  expr_mat <- convert_to_gene_symbols(expr_mat, config)
+
+  # Check overlap with gene sets
+  all_gs_genes <- unique(unlist(gene_sets))
+  overlap <- length(intersect(rownames(expr_mat), all_gs_genes))
+  log_message("  Gene overlap with MSigDB: ", overlap, " / ", length(all_gs_genes), " genes")
+
+  if (overlap < 100) {
+    log_message("  WARNING: Low gene overlap. Check if expression matrix uses gene symbols.")
+    log_message("  Sample rownames: ", paste(head(rownames(expr_mat), 5), collapse = ", "))
+    log_message("  Sample gene set genes: ", paste(head(all_gs_genes, 5), collapse = ", "))
+  }
+
   # Run GSVA (using new API for Bioconductor 3.18+)
   gsva_scores <- tryCatch({
     log_message("  Running GSVA (method: ", ap$gsva_method, ")...")
@@ -675,4 +689,116 @@ if (!exists("log_message")) {
 
 if (!exists("%||%")) {
   `%||%` <- function(x, y) if (is.null(x)) y else x
+}
+
+#' Convert expression matrix rownames to gene symbols
+#' @param expr_mat Expression matrix with any gene identifiers
+#' @param config Pipeline configuration
+#' @return Expression matrix with gene symbols as rownames
+convert_to_gene_symbols <- function(expr_mat, config) {
+  current_ids <- rownames(expr_mat)
+
+  # Check if already gene symbols (heuristic: most don't start with ENSG)
+  ensembl_pattern <- sum(grepl("^ENSG[0-9]+", current_ids))
+  entrez_pattern <- sum(grepl("^[0-9]+$", current_ids))
+
+  if (ensembl_pattern < 0.5 * length(current_ids) && entrez_pattern < 0.5 * length(current_ids)) {
+    # Likely already gene symbols
+    log_message("  Gene identifiers appear to be symbols already")
+    return(expr_mat)
+  }
+
+  log_message("  Converting gene identifiers to symbols...")
+
+  # Try org.Hs.eg.db for human
+  organism <- config$organism %||% "human"
+
+  if (organism == "human" && requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+    tryCatch({
+      if (ensembl_pattern > entrez_pattern) {
+        # Ensembl IDs - strip version numbers first
+        clean_ids <- gsub("\\.[0-9]+$", "", current_ids)
+        mapping <- AnnotationDbi::select(
+          org.Hs.eg.db::org.Hs.eg.db,
+          keys = clean_ids,
+          keytype = "ENSEMBL",
+          columns = "SYMBOL"
+        )
+      } else {
+        # Entrez IDs
+        mapping <- AnnotationDbi::select(
+          org.Hs.eg.db::org.Hs.eg.db,
+          keys = current_ids,
+          keytype = "ENTREZID",
+          columns = "SYMBOL"
+        )
+      }
+
+      # Create lookup
+      if (ensembl_pattern > entrez_pattern) {
+        id_to_symbol <- setNames(mapping$SYMBOL, mapping$ENSEMBL)
+        clean_ids <- gsub("\\.[0-9]+$", "", current_ids)
+        new_symbols <- id_to_symbol[clean_ids]
+      } else {
+        id_to_symbol <- setNames(mapping$SYMBOL, mapping$ENTREZID)
+        new_symbols <- id_to_symbol[current_ids]
+      }
+
+      # Replace NA with original ID
+      new_symbols[is.na(new_symbols)] <- current_ids[is.na(new_symbols)]
+
+      # Handle duplicates by keeping first occurrence
+      dup_mask <- duplicated(new_symbols)
+      if (any(dup_mask)) {
+        log_message("  Removing ", sum(dup_mask), " duplicate gene symbols")
+        expr_mat <- expr_mat[!dup_mask, , drop = FALSE]
+        new_symbols <- new_symbols[!dup_mask]
+      }
+
+      rownames(expr_mat) <- new_symbols
+      log_message("  Converted ", sum(!is.na(id_to_symbol[clean_ids])), " / ", length(current_ids), " IDs to symbols")
+
+    }, error = function(e) {
+      log_message("  Gene symbol conversion failed: ", e$message)
+    })
+  } else if (organism == "mouse" && requireNamespace("org.Mm.eg.db", quietly = TRUE)) {
+    tryCatch({
+      if (ensembl_pattern > entrez_pattern) {
+        clean_ids <- gsub("\\.[0-9]+$", "", current_ids)
+        mapping <- AnnotationDbi::select(
+          org.Mm.eg.db::org.Mm.eg.db,
+          keys = clean_ids,
+          keytype = "ENSEMBL",
+          columns = "SYMBOL"
+        )
+        id_to_symbol <- setNames(mapping$SYMBOL, mapping$ENSEMBL)
+        new_symbols <- id_to_symbol[clean_ids]
+      } else {
+        mapping <- AnnotationDbi::select(
+          org.Mm.eg.db::org.Mm.eg.db,
+          keys = current_ids,
+          keytype = "ENTREZID",
+          columns = "SYMBOL"
+        )
+        id_to_symbol <- setNames(mapping$SYMBOL, mapping$ENTREZID)
+        new_symbols <- id_to_symbol[current_ids]
+      }
+
+      new_symbols[is.na(new_symbols)] <- current_ids[is.na(new_symbols)]
+
+      dup_mask <- duplicated(new_symbols)
+      if (any(dup_mask)) {
+        log_message("  Removing ", sum(dup_mask), " duplicate gene symbols")
+        expr_mat <- expr_mat[!dup_mask, , drop = FALSE]
+        new_symbols <- new_symbols[!dup_mask]
+      }
+
+      rownames(expr_mat) <- new_symbols
+
+    }, error = function(e) {
+      log_message("  Gene symbol conversion failed: ", e$message)
+    })
+  }
+
+  return(expr_mat)
 }

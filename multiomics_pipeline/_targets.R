@@ -123,7 +123,7 @@ list(
   # ---------------------------------------------------------------------------
   tar_target(
     name = config,
-    command = load_config("config.yml")
+    command = load_config(Sys.getenv("PIPELINE_CONFIG", unset = "config.yml"))
   ),
 
   # ---------------------------------------------------------------------------

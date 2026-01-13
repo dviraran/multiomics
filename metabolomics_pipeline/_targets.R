@@ -115,7 +115,7 @@ list(
   # ---------------------------------------------------------------------------
   tar_target(
     config,
-    load_config("config.yml")
+    load_config(Sys.getenv("PIPELINE_CONFIG", unset = "config.yml"))
   ),
 
   # ---------------------------------------------------------------------------

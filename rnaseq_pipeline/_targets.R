@@ -78,7 +78,9 @@ tar_source("R/")
 # - R/05b_deconvolution.R - xCell 2.0 cell type deconvolution
 
 # Load configuration
-config <- yaml::read_yaml("config.yml")
+# Use PIPELINE_CONFIG env var if set, otherwise default to config.yml
+config_file <- Sys.getenv("PIPELINE_CONFIG", unset = "config.yml")
+config <- yaml::read_yaml(config_file)
 
 # Set target options
 tar_option_set(
@@ -99,7 +101,7 @@ list(
   # ==========================================================================
   tar_target(
     pipeline_config,
-    load_params("config.yml")
+    load_params(Sys.getenv("PIPELINE_CONFIG", unset = "config.yml"))
   ),
 
   # ==========================================================================
