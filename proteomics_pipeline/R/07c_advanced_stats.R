@@ -739,7 +739,7 @@ fit_robust_regression <- function(protein, expr_data, metadata, condition_col) {
 
 #' Run Power Analysis
 #'
-#' @param da_results DA results
+#' @param da_results DA results (can be nested list or data frame)
 #' @param metadata Sample metadata
 #' @param config Pipeline configuration
 #' @param output_dir Output directory
@@ -754,9 +754,38 @@ run_power_analysis <- function(da_results, metadata, config, output_dir) {
 
   current_n <- min(group_sizes)
 
+  # Extract DA table from nested structure if needed
+  da_table <- NULL
+  if (is.data.frame(da_results)) {
+    da_table <- da_results
+  } else if (is.list(da_results) && "results" %in% names(da_results)) {
+    # Handle nested structure: da_results$results$contrast_name$table
+    results_list <- da_results$results
+    if (is.list(results_list) && length(results_list) > 0) {
+      first_contrast <- results_list[[1]]
+      if (is.list(first_contrast) && "table" %in% names(first_contrast)) {
+        da_table <- first_contrast$table
+      }
+    }
+  }
+
+  if (is.null(da_table) || !is.data.frame(da_table)) {
+    log_message("  Cannot extract DA table for power analysis. Skipping.")
+    return(NULL)
+  }
+
+  # Handle different column naming conventions
+  padj_col <- intersect(c("padj", "adj.P.Val", "FDR", "q.value"), colnames(da_table))[1]
+  fc_col <- intersect(c("log2FoldChange", "log2FC", "logFC"), colnames(da_table))[1]
+
+  if (is.na(padj_col) || is.na(fc_col)) {
+    log_message("  Required columns not found for power analysis. Skipping.")
+    return(NULL)
+  }
+
   # Estimate effect sizes from data
-  significant <- da_results$padj < 0.05 & !is.na(da_results$padj)
-  effect_sizes <- abs(da_results$log2FoldChange[significant])
+  significant <- da_table[[padj_col]] < 0.05 & !is.na(da_table[[padj_col]])
+  effect_sizes <- abs(da_table[[fc_col]][significant])
 
   if (length(effect_sizes) == 0) {
     log_message("  No significant proteins for power estimation.")
@@ -878,13 +907,45 @@ calculate_required_n <- function(effect_size, power = 0.80, alpha = 0.05) {
 
 #' Compare Multiple Testing Correction Methods
 #'
-#' @param da_results DA results with raw p-values
+#' @param da_results DA results with raw p-values (can be nested list or data frame)
 #' @param output_dir Output directory
 #' @return Comparison of different MTC methods
 compare_multiple_testing_methods <- function(da_results, output_dir) {
   log_message("Comparing multiple testing correction methods...")
 
-  pvalues <- da_results$pvalue[!is.na(da_results$pvalue)]
+  # Extract DA table from nested structure if needed
+  da_table <- NULL
+  if (is.data.frame(da_results)) {
+    da_table <- da_results
+  } else if (is.list(da_results) && "results" %in% names(da_results)) {
+    results_list <- da_results$results
+    if (is.list(results_list) && length(results_list) > 0) {
+      first_contrast <- results_list[[1]]
+      if (is.list(first_contrast) && "table" %in% names(first_contrast)) {
+        da_table <- first_contrast$table
+      }
+    }
+  }
+
+  if (is.null(da_table) || !is.data.frame(da_table)) {
+    log_message("  Cannot extract DA table for MTC comparison. Skipping.")
+    return(NULL)
+  }
+
+  # Handle different column naming conventions for p-value
+  pval_col <- intersect(c("pvalue", "P.Value", "PValue", "p.value"), colnames(da_table))[1]
+
+  if (is.na(pval_col)) {
+    log_message("  P-value column not found. Skipping MTC comparison.")
+    return(NULL)
+  }
+
+  pvalues <- da_table[[pval_col]][!is.na(da_table[[pval_col]])]
+
+  if (length(pvalues) == 0) {
+    log_message("  No valid p-values for MTC comparison. Skipping.")
+    return(NULL)
+  }
 
   methods <- c("bonferroni", "holm", "hochberg", "hommel", "BH", "BY", "fdr")
 

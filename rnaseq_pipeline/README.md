@@ -27,6 +27,10 @@ A complete, reproducible pipeline for analyzing bulk RNA-seq data using the `{ta
 
 ### 1. Install Dependencies
 
+The pipeline will automatically check for missing packages and prompt you to install them when you run `tar_make()`. Just run the pipeline and follow the prompts.
+
+**Manual installation (optional):**
+
 ```r
 # Install Bioconductor packages
 if (!require("BiocManager", quietly = TRUE))
@@ -97,13 +101,28 @@ contrasts:
 
 ### 4. Run the Pipeline
 
+**Option A: Run from pipeline directory**
+
 ```r
-# From R
+# From R (in rnaseq_pipeline directory)
 library(targets)
 tar_make()
 
 # Or from terminal
 Rscript -e "targets::tar_make()"
+```
+
+**Option B: Run with custom config from anywhere**
+
+```r
+# From the multiomics root directory
+source("pipeline_runner.R")
+run_rnaseq_pipeline("path/to/your/config.yml")
+
+# Or set environment variable directly
+Sys.setenv(PIPELINE_CONFIG = "/path/to/your/config.yml")
+setwd("rnaseq_pipeline")
+targets::tar_make()
 ```
 
 ### 5. View Results

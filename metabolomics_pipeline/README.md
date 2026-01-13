@@ -20,7 +20,11 @@ A comprehensive, reproducible metabolomics analysis pipeline built with `{target
 
 R version ≥ 4.1.0
 
-### Required Packages
+### Automatic Package Installation
+
+The pipeline will automatically check for missing packages and prompt you to install them when you run `tar_make()`. Just run the pipeline and follow the prompts.
+
+### Manual Installation (optional)
 
 ```r
 # CRAN packages
@@ -120,6 +124,8 @@ design:
 
 ### 3. Run the Pipeline
 
+**Option A: Run from pipeline directory**
+
 ```r
 library(targets)
 
@@ -131,6 +137,19 @@ tar_make()
 
 # Check progress
 tar_progress()
+```
+
+**Option B: Run with custom config from anywhere**
+
+```r
+# From the multiomics root directory
+source("pipeline_runner.R")
+run_metabolomics_pipeline("path/to/your/config.yml")
+
+# Or set environment variable directly
+Sys.setenv(PIPELINE_CONFIG = "/path/to/your/config.yml")
+setwd("metabolomics_pipeline")
+targets::tar_make()
 ```
 
 ### 4. View Results

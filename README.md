@@ -19,10 +19,11 @@ A collection of reproducible R pipelines for analyzing omics data, built with th
 - **Comprehensive QC**: Built-in quality control checks and visualizations
 - **Publication-ready**: Automated HTML reports with R Markdown
 - **AI Commentary** (RNA-seq/Proteomics): Optional LLM-generated figure interpretations
+- **Auto-install packages**: Prompts to install missing packages on first run
 
 ## Quick Start
 
-Each pipeline follows the same structure:
+### Option 1: Run from pipeline directory
 
 ```bash
 cd <pipeline_name>
@@ -35,9 +36,35 @@ cd <pipeline_name>
 ```r
 library(targets)
 tar_make()        # Run pipeline
-tar_visnetwork()
-  # Visualize dependencies
+tar_visnetwork()  # Visualize dependencies
 tar_read(result)  # Access any result
+```
+
+### Option 2: Run with custom config from anywhere
+
+Use the `pipeline_runner.R` helper to run pipelines with custom config files from any directory:
+
+```r
+source("path/to/multiomics/pipeline_runner.R")
+
+# Run with custom config file
+run_rnaseq_pipeline("my_project/rnaseq_config.yml")
+run_proteomics_pipeline("my_project/proteomics_config.yml")
+run_metabolomics_pipeline("my_project/metabolomics_config.yml")
+run_multiomics_pipeline("my_project/multiomics_config.yml")
+
+# Or use the generic function
+run_omics_pipeline("rnaseq", "path/to/config.yml")
+
+# Clean cache and rerun from scratch
+run_rnaseq_pipeline("config.yml", clean = TRUE)
+```
+
+### Option 3: Run all pipelines in sequence
+
+```bash
+cd examples/scripts
+Rscript run_all_pipelines.R --clean
 ```
 
 ## Directory Structure
@@ -56,15 +83,19 @@ Each pipeline contains:
 
 ## Requirements
 
-### Core R Packages
+### Automatic Package Installation
+
+Each pipeline will automatically check for missing packages on first run and prompt you to install them. Just run `tar_make()` and follow the prompts.
+
+### Manual Installation (optional)
+
+If you prefer to install packages manually:
 
 ```r
+# Core packages
 install.packages(c("targets", "tarchetypes", "tidyverse", "yaml"))
-```
 
-### Bioconductor (per pipeline)
-
-```r
+# Bioconductor packages (varies by pipeline)
 BiocManager::install(c(
   # RNA-seq
   "DESeq2", "fgsea", "org.Hs.eg.db",

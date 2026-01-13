@@ -17,7 +17,11 @@ A comprehensive R pipeline for integrating transcriptomics, proteomics, and meta
 
 ## Installation
 
-### Prerequisites
+### Automatic Package Installation
+
+The pipeline will automatically check for missing packages and prompt you to install them when you run `tar_make()`. Just run the pipeline and follow the prompts.
+
+### Manual Installation (optional)
 
 ```r
 # CRAN packages
@@ -60,9 +64,23 @@ install.packages("SNFtool")  # For SNF integration
    ```
 
 4. **Run the pipeline**:
+
+   **Option A: Run from pipeline directory**
    ```r
    library(targets)
    tar_make()
+   ```
+
+   **Option B: Run with custom config from anywhere**
+   ```r
+   # From the multiomics root directory
+   source("pipeline_runner.R")
+   run_multiomics_pipeline("path/to/your/config.yml")
+
+   # Or set environment variable directly
+   Sys.setenv(PIPELINE_CONFIG = "/path/to/your/config.yml")
+   setwd("multiomics_pipeline")
+   targets::tar_make()
    ```
 
 5. **View results** in `outputs/`

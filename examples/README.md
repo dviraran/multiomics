@@ -40,7 +40,19 @@ source("scripts/run_all_pipelines.R")
 
 ### Running Individual Pipelines
 
-After setup, you can run pipelines individually from their directories:
+After setup, you can run pipelines from the root directory using the pipeline runner:
+
+```r
+# From multiomics root directory
+source("pipeline_runner.R")
+
+# Run with custom config
+run_rnaseq_pipeline("examples/data/nci60/rnaseq_config.yml")
+run_proteomics_pipeline("examples/data/nci60/proteomics_config.yml")
+run_multiomics_pipeline("examples/data/nci60/multiomics_config.yml")
+```
+
+Or from individual pipeline directories:
 
 ```r
 # RNA-seq only
@@ -251,7 +263,9 @@ multiomics_pipeline/
    options(future.globals.maxSize = 2000 * 1024^2)  # 2GB
    ```
 
-3. **Missing packages**: Install required Bioconductor packages
+3. **Missing packages**: The pipelines will automatically prompt you to install missing packages when you run `tar_make()`. Just follow the prompts.
+
+   For manual installation:
    ```r
    # Core packages for all pipelines
    BiocManager::install(c("DESeq2", "limma", "fgsea", "vsn"))

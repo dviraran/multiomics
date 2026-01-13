@@ -19,7 +19,11 @@ A comprehensive, reproducible mass-spectrometry proteomics analysis pipeline bui
 
 R version ≥ 4.1.0
 
-### Required Packages
+### Automatic Package Installation
+
+The pipeline will automatically check for missing packages and prompt you to install them when you run `tar_make()`. Just run the pipeline and follow the prompts.
+
+### Manual Installation (optional)
 
 ```r
 # Install CRAN packages
@@ -56,14 +60,6 @@ BiocManager::install(c(
   "UniProt.ws",        # For ID mapping
   "biomaRt"            # Alternative ID mapping
 ))
-```
-
-### Optional: Set up renv for reproducibility
-
-```r
-# Initialize renv in the project directory
-renv::init()
-renv::snapshot()
 ```
 
 ## Quick Start
@@ -125,6 +121,8 @@ design:
 
 ### 3. Run the Pipeline
 
+**Option A: Run from pipeline directory**
+
 ```r
 # Load targets
 library(targets)
@@ -137,6 +135,19 @@ tar_make()
 
 # Check pipeline status
 tar_progress()
+```
+
+**Option B: Run with custom config from anywhere**
+
+```r
+# From the multiomics root directory
+source("pipeline_runner.R")
+run_proteomics_pipeline("path/to/your/config.yml")
+
+# Or set environment variable directly
+Sys.setenv(PIPELINE_CONFIG = "/path/to/your/config.yml")
+setwd("proteomics_pipeline")
+targets::tar_make()
 ```
 
 ### 4. View Results
