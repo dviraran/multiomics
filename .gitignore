@@ -34,3 +34,6 @@ renv/python/
 
 # OS files
 Thumbs.db
+
+# Pipeline outputs (generated files, not tracked)
+*/outputs/
