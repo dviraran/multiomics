@@ -1,0 +1,463 @@
+---
+title: "Getting Started with Multi-Omics Pipelines"
+author: "Multi-Omics Pipelines"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# Introduction
+
+This guide will help you get started with the multi-omics analysis pipelines. The pipelines support:
+
+- **RNA-seq**: Differential expression and pathway analysis
+- **Proteomics**: Protein quantification and enrichment analysis
+- **Metabolomics**: Metabolite profiling with drift correction
+- **Multi-omics Integration**: MOFA2, DIABLO, and SNF methods
+
+All pipelines are built with the `{targets}` framework for reproducibility and support **non-model organisms** through flexible annotation systems.
+
+# Quick Start
+
+## Option 1: Running Locally
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/your-repo/multiomics.git
+cd multiomics
+```
+
+### Step 2: Install Required Packages
+
+Open R and run:
+
+```{r}
+# Install BiocManager if needed
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Core packages
+install.packages(c("tidyverse", "yaml", "targets", "tarchetypes"))
+
+# Bioconductor packages (RNA-seq)
+BiocManager::install(c("DESeq2", "limma", "fgsea", "clusterProfiler", "biomaRt"))
+
+# For multi-omics
+BiocManager::install(c("MOFA2", "mixOmics", "MultiAssayExperiment"))
+```
+
+### Step 3: Prepare Your Data
+
+Create a config file (copy and modify from templates):
+
+```bash
+cp rnaseq_pipeline/config_template.yml my_config.yml
+```
+
+### Step 4: Run a Pipeline
+
+```{r}
+source("pipeline_runner.R")
+run_rnaseq_pipeline("my_config.yml")
+```
+
+## Option 2: Using Docker (Recommended)
+
+Docker provides a fully reproducible environment with all packages pre-installed.
+
+### Step 1: Build the Image
+
+```bash
+docker build -t multiomics-pipelines .
+```
+
+### Step 2: Run with Docker Compose
+
+```bash
+# Start RStudio Server (access at http://localhost:8787)
+docker-compose --profile rstudio up -d
+
+# Or run a pipeline directly
+docker-compose run --rm pipeline Rscript -e \
+  "source('pipeline_runner.R'); run_rnaseq_pipeline('/data/config.yml')"
+```
+
+# Preparing Your Data
+
+## Required Files
+
+### 1. Expression/Abundance Matrix
+
+A CSV or TSV file with:
+- Rows = features (genes, proteins, or metabolites)
+- Columns = samples
+- First column = feature IDs
+
+```
+gene_id,Sample1,Sample2,Sample3,Sample4
+ENSG00000000003,1234,2345,1567,2890
+ENSG00000000005,567,678,890,456
+```
+
+### 2. Sample Metadata
+
+A CSV file with sample information:
+
+```
+sample_id,condition,batch
+Sample1,Control,Batch1
+Sample2,Control,Batch1
+Sample3,Treatment,Batch2
+Sample4,Treatment,Batch2
+```
+
+**Important**: The `sample_id` column must match the column names in your matrix.
+
+## Data Quality Checks
+
+Before running a pipeline, validate your data:
+
+```{r}
+source("shared/R/preflight_checks.R")
+
+config <- yaml::read_yaml("my_config.yml")
+result <- run_preflight_checks(config, pipeline_type = "rnaseq")
+
+if (!result$passed) {
+    print(result$errors)
+} else {
+    print(result$stats)
+}
+```
+
+# Creating a Configuration File
+
+## Minimal Configuration
+
+```yaml
+# my_config.yml
+project_name: "My RNA-seq Analysis"
+organism: "Homo sapiens"
+
+input:
+  counts_file: "data/counts.csv"
+  metadata_file: "data/metadata.csv"
+  sample_id_column: "sample_id"
+  condition_column: "condition"
+
+output:
+  base_dir: "outputs"
+
+differential:
+  contrasts:
+    - name: "Treatment_vs_Control"
+      numerator: "Treatment"
+      denominator: "Control"
+```
+
+## Full Configuration (with all options)
+
+See the template files in each pipeline directory:
+- `rnaseq_pipeline/config_template.yml`
+- `proteomics_pipeline/config_template.yml`
+- `metabolomics_pipeline/config_template.yml`
+- `multiomics_pipeline/config_template.yml`
+
+# Working with Non-Model Organisms
+
+A key feature of these pipelines is robust support for organisms without standard annotation packages.
+
+## Step 1: Check Your Gene IDs
+
+```{r}
+source("shared/R/organism_detection.R")
+
+# Load your gene IDs
+gene_ids <- read.csv("data/counts.csv")[[1]]
+
+# Detect ID type
+id_type <- detect_id_type(gene_ids)
+print(id_type)
+# Example output: "ensembl_gene_id"
+
+# Try to detect organism
+org_result <- detect_organism_from_ids(gene_ids)
+print(org_result)
+# Example output:
+# $organism: "Sus scrofa"
+# $confidence: "medium"
+# $evidence: "Ensembl ID prefix ENSSSC"
+```
+## Step 2: Generate Pathway Files (GMT)
+
+For enrichment analysis, you need pathway files in GMT format. Generate them for your organism:
+
+### Using Command Line
+
+```bash
+# Generate GO pathways for pig
+Rscript shared/scripts/generate_gmt.R \
+  --organism "Sus scrofa" \
+  --ontology BP \
+  --output pig_go_bp.gmt
+
+# Generate KEGG pathways
+Rscript shared/scripts/generate_gmt.R \
+  --kegg-org ssc \
+  --output pig_kegg.gmt
+
+# List available organisms
+Rscript shared/scripts/generate_gmt.R --list-organisms --search "cattle"
+```
+
+### Using R
+
+```{r}
+source("shared/scripts/generate_gmt.R")
+
+# Generate GO GMT
+generate_gmt_for_organism(
+    organism = "Bos taurus",
+    ontology = "BP",
+    id_type = "ensembl_gene_id",
+    output_file = "cow_go_bp.gmt"
+)
+
+# Generate KEGG GMT
+generate_kegg_gmt(
+    kegg_org = "bta",
+    output_file = "cow_kegg.gmt"
+)
+```
+
+## Step 3: Provide Custom Mapping (Optional)
+
+If automatic annotation doesn't work well for your organism, provide a custom mapping file:
+
+```
+# custom_mapping.csv
+feature_id,gene_symbol,entrez_id,description
+ENSSSCG00000000001,TP53,397295,tumor protein p53
+ENSSSCG00000000002,BRCA1,100037931,BRCA1 DNA repair associated
+```
+
+## Step 4: Configure for Non-Model Organism
+
+```yaml
+# config.yml for non-model organism
+organism: "Sus scrofa"
+
+input:
+  counts_file: "data/pig_counts.csv"
+  gene_id_type: "ensembl_gene_id"  # or "auto" for detection
+
+annotation:
+  skip_annotation: false
+  fallback_chain:
+    - custom
+    - biomart
+  custom_mapping_file: "data/custom_mapping.csv"  # optional
+
+enrichment:
+  gmt_file: "pig_go_bp.gmt"
+  min_genes: 10
+  max_genes: 500
+```
+
+## Supported Organisms
+
+### Ensembl (via biomaRt) - 100+ species
+
+Common model organisms:
+- Homo sapiens, Mus musculus, Rattus norvegicus
+- Danio rerio, Drosophila melanogaster, C. elegans
+
+Livestock:
+- Sus scrofa (pig), Bos taurus (cow), Ovis aries (sheep)
+- Gallus gallus (chicken), Equus caballus (horse)
+
+And many more...
+
+```{r}
+# List all available organisms
+source("shared/scripts/generate_gmt.R")
+list_available_organisms()
+```
+
+### KEGG - 8000+ organisms
+
+```{r}
+# Search for your organism
+list_kegg_organisms(pattern = "sheep")
+```
+
+# Running the Pipelines
+
+## RNA-seq Pipeline
+
+```{r}
+source("pipeline_runner.R")
+
+# With custom config
+run_rnaseq_pipeline("path/to/config.yml")
+
+# Clean and re-run
+run_rnaseq_pipeline("path/to/config.yml", clean = TRUE)
+
+# Check pipeline status
+setwd("rnaseq_pipeline")
+library(targets)
+tar_visnetwork()  # Visualize pipeline DAG
+```
+
+## Proteomics Pipeline
+
+```{r}
+run_proteomics_pipeline("proteomics_config.yml")
+```
+
+Key features:
+- Supports MaxQuant, FragPipe, DIA-NN, Spectronaut, generic formats
+- MNAR-aware imputation for missing values
+- VSN normalization
+
+## Metabolomics Pipeline
+
+```{r}
+run_metabolomics_pipeline("metabolomics_config.yml")
+```
+
+Key features:
+- QC sample-based drift correction
+- Blank subtraction
+- Both targeted and untargeted workflows
+
+## Multi-omics Integration
+
+```{r}
+run_multiomics_pipeline("multiomics_config.yml")
+```
+
+Methods available:
+- **MOFA2**: Unsupervised factor analysis
+- **DIABLO**: Supervised multi-omics classification
+- **SNF**: Patient similarity networks
+
+# Understanding the Outputs
+
+## Output Directory Structure
+
+```
+outputs/
+├── tables/
+│   ├── differential_expression.csv
+│   ├── feature_annotations.csv
+│   └── enrichment_results.csv
+├── plots/
+│   ├── pca_plot.png
+│   ├── volcano_plot.png
+│   └── heatmap.png
+├── qc/
+│   ├── qc_metrics.csv
+│   └── sample_correlations.png
+└── report/
+    └── analysis_report.html
+```
+
+## Key Output Files
+
+### Differential Expression Results
+
+```{r}
+de_results <- read.csv("outputs/tables/differential_expression.csv")
+head(de_results)
+```
+
+Columns:
+- `feature_id`: Gene/protein ID
+- `log2FoldChange`: Effect size
+- `pvalue`: Raw p-value
+- `padj`: Adjusted p-value (FDR)
+- `gene_symbol`: Mapped gene name (if available)
+
+### Enrichment Results
+
+```{r}
+enrichment <- read.csv("outputs/tables/enrichment_results.csv")
+head(enrichment)
+```
+
+Columns:
+- `pathway`: Pathway name
+- `pval`: Enrichment p-value
+- `padj`: Adjusted p-value
+- `NES`: Normalized enrichment score (GSEA)
+- `size`: Number of genes in pathway
+
+# Troubleshooting
+
+## Common Issues
+
+### "No annotation found for organism"
+
+Your organism may not have an OrgDb package. Solutions:
+1. Use biomaRt fallback (automatic)
+2. Provide custom mapping file
+3. Set `skip_annotation: true` in config
+
+### "Low GMT coverage"
+
+Your pathway file doesn't match your gene IDs. Solutions:
+1. Generate new GMT with matching ID type
+2. Convert IDs in your GMT file:
+
+```{r}
+source("shared/R/gmt_utils.R")
+convert_gmt_ids(
+    gmt_file = "pathways.gmt",
+    mapping_file = "id_mapping.csv",
+    from_col = "entrez_id",
+    to_col = "ensembl_id",
+    output_file = "pathways_ensembl.gmt"
+)
+```
+
+### "Sample IDs don't match"
+
+Check that column names in your matrix match `sample_id` in metadata:
+
+```{r}
+matrix <- read.csv("counts.csv", row.names = 1)
+metadata <- read.csv("metadata.csv")
+
+# These should match
+colnames(matrix)
+metadata$sample_id
+```
+
+## Getting Help
+
+1. Check the error message - pipelines provide detailed error descriptions
+2. Run preflight checks to validate your data
+3. Review the `CLAUDE.md` file for architecture details
+4. Open an issue on GitHub
+
+# Next Steps
+
+- Explore example datasets in `examples/`
+- Customize report templates in `*/reports/`
+- Try different analysis parameters
+- Integrate multiple omics types with the multi-omics pipeline
+
+Happy analyzing!

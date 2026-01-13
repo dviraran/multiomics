@@ -1,0 +1,57 @@
+# =============================================================================
+# Docker Compose for Multi-Omics Pipelines
+# =============================================================================
+#
+# Usage:
+#   # Build and start
+#   docker-compose up -d
+#
+#   # Run a pipeline
+#   docker-compose run --rm pipeline Rscript -e "source('pipeline_runner.R'); run_rnaseq_pipeline('/data/config.yml')"
+#
+#   # Interactive R session
+#   docker-compose run --rm pipeline R
+#
+#   # Stop
+#   docker-compose down
+
+version: '3.8'
+
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: multiomics-pipelines:latest
+    container_name: multiomics
+    volumes:
+      # Mount your data directory
+      - ./data:/data
+      # Mount outputs
+      - ./outputs:/outputs
+      # Mount the pipeline code (for development)
+      - .:/app
+    environment:
+      - PIPELINE_CONFIG=/data/config.yml
+    working_dir: /app
+    stdin_open: true
+    tty: true
+
+  # RStudio Server for interactive analysis
+  rstudio:
+    build:
+      context: .
+      dockerfile: Dockerfile.rstudio
+    image: multiomics-rstudio:latest
+    container_name: multiomics-rstudio
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/home/rstudio/data
+      - ./outputs:/home/rstudio/outputs
+      - .:/home/rstudio/pipelines
+    environment:
+      - DISABLE_AUTH=true
+      - ROOT=true
+    profiles:
+      - rstudio

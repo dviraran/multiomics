@@ -1,0 +1,79 @@
+# =============================================================================
+# RStudio Server Docker Image for Multi-Omics Pipelines
+# =============================================================================
+#
+# Provides RStudio Server for interactive analysis
+#
+# Build:
+#   docker build -f Dockerfile.rstudio -t multiomics-rstudio .
+#
+# Run:
+#   docker run -p 8787:8787 -v $(pwd):/home/rstudio/work multiomics-rstudio
+#
+# Access RStudio at http://localhost:8787
+
+FROM rocker/rstudio:4.3.2
+
+LABEL maintainer="Multi-Omics Pipelines"
+LABEL description="RStudio Server for interactive multi-omics analysis"
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libgit2-dev \
+    libglpk-dev \
+    libgmp-dev \
+    libhdf5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set CRAN mirror
+RUN echo 'options(repos = c(CRAN = "https://cloud.r-project.org"))' >> /usr/local/lib/R/etc/Rprofile.site
+
+# Install BiocManager
+RUN R -e "install.packages('BiocManager')"
+RUN R -e "BiocManager::install(version = '3.18', ask = FALSE)"
+
+# Install core packages
+RUN R -e "install.packages(c( \
+    'tidyverse', \
+    'yaml', \
+    'targets', \
+    'tarchetypes', \
+    'rmarkdown', \
+    'knitr', \
+    'DT', \
+    'plotly', \
+    'pheatmap', \
+    'ComplexHeatmap', \
+    'ggrepel' \
+))"
+
+# Install Bioconductor packages
+RUN R -e "BiocManager::install(c( \
+    'DESeq2', \
+    'limma', \
+    'fgsea', \
+    'clusterProfiler', \
+    'org.Hs.eg.db', \
+    'biomaRt', \
+    'MultiAssayExperiment', \
+    'MOFA2', \
+    'mixOmics' \
+), ask = FALSE, update = FALSE)"
+
+# Create directories
+RUN mkdir -p /home/rstudio/data /home/rstudio/outputs /home/rstudio/pipelines
+
+# Set permissions
+RUN chown -R rstudio:rstudio /home/rstudio
+
+EXPOSE 8787

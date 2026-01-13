@@ -1,0 +1,64 @@
+# =============================================================================
+# Docker Ignore File for Multi-Omics Pipelines
+# =============================================================================
+# Excludes unnecessary files from Docker build context
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.Rproj.user
+*.Rproj
+
+# Claude Code
+.claude/
+
+# R package caches
+.Rhistory
+.RData
+.Ruserdata
+
+# Targets cache (large, should not be in image)
+*/_targets/
+_targets/
+**/objects/
+**/meta/
+
+# Output directories (user-specific)
+outputs/
+**/outputs/
+
+# Example data (users provide their own)
+examples/
+data/
+
+# Documentation source (not needed in container)
+*.md
+!README.md
+docs/
+
+# Test files
+tests/
+testthat/
+
+# Large files
+*.rds
+*.RDS
+*.rda
+*.RData
+*.csv
+*.tsv
+*.xlsx
+*.txt
+!requirements.txt
+
+# Logs
+*.log
+logs/
