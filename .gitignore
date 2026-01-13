@@ -40,4 +40,4 @@ Thumbs.db
 examples/runs/
 
 # Claude Code settings
-.claude/settings.local.json
+.claude/
