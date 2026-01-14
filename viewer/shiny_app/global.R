@@ -62,16 +62,77 @@ app_theme <- bs_theme(
 )
 
 # =============================================================================
-# LAZY LOADING: Only scan for available data directories (don't load data)
+# DATA DIRECTORY DETECTION
 # =============================================================================
 
-# Data directory is one level up from shiny_app
-DATA_DIR <- file.path(dirname(getwd()), "data")
-if (!dir.exists(DATA_DIR)) {
-    DATA_DIR <- file.path(getwd(), "data")
+# Priority 1: Environment variable set by run_viewer()
+DATA_DIR <- Sys.getenv("MULTIOMICS_DATA_DIR", unset = "")
+
+# Priority 2: Common relative locations (fallback)
+if (DATA_DIR == "" || !dir.exists(DATA_DIR)) {
+    candidates <- c(
+        file.path(dirname(getwd()), "data"),  # ../data (viewer/data from shiny_app)
+        file.path(getwd(), "data"),            # ./data
+        "data"                                  # relative data
+    )
+
+    for (candidate in candidates) {
+        if (dir.exists(candidate)) {
+            DATA_DIR <- normalizePath(candidate)
+            break
+        }
+    }
+
+    # If still not found, default to ../data
+    if (DATA_DIR == "" || !dir.exists(DATA_DIR)) {
+        DATA_DIR <- file.path(dirname(getwd()), "data")
+    }
 }
 
-message("Scanning for data in: ", DATA_DIR)
+message("========================================")
+message("Multi-Omics Viewer - Data Discovery")
+message("========================================")
+message("Data directory: ", DATA_DIR)
+
+# =============================================================================
+# LAZY LOADING: Scan for available data directories and validate files
+# =============================================================================
+
+# Helper function to check for required files in a data type directory
+validate_data_dir <- function(dir_path, data_type) {
+    if (!dir.exists(dir_path)) {
+        return(list(valid = FALSE, files = character(0), message = "Directory not found"))
+    }
+
+    # Look for CSV/RDS files
+    csv_files <- list.files(dir_path, pattern = "\\.csv$", recursive = TRUE)
+    rds_files <- list.files(dir_path, pattern = "\\.rds$", recursive = TRUE)
+    all_files <- c(csv_files, rds_files)
+
+    if (length(all_files) == 0) {
+        return(list(valid = FALSE, files = character(0),
+                    message = "No CSV or RDS files found"))
+    }
+
+    # Check for expected files based on data type
+    expected_patterns <- switch(data_type,
+        "rnaseq" = c("de_results", "pca", "qc", "normalized"),
+        "proteomics" = c("differential", "normalized", "qc"),
+        "metabolomics" = c("differential", "normalized", "pca"),
+        "multiomics" = c("mofa", "diablo", "mae", "correlation")
+    )
+
+    found_expected <- sapply(expected_patterns, function(p) {
+        any(grepl(p, all_files, ignore.case = TRUE))
+    })
+
+    list(
+        valid = TRUE,
+        files = all_files,
+        expected_found = found_expected,
+        message = paste(length(all_files), "files found")
+    )
+}
 
 # Store paths and availability flags (NOT the actual data)
 app_data <- list(
@@ -88,33 +149,75 @@ app_data <- list(
     has_metabolomics = FALSE,
     has_multiomics = FALSE,
 
+    # File validation results
+    rnaseq_files = character(0),
+    proteomics_files = character(0),
+    metabolomics_files = character(0),
+    multiomics_files = character(0),
+
     # Project name
     project_name = "Multi-Omics Analysis"
 )
 
-# Check which data directories exist
-if (dir.exists(file.path(DATA_DIR, "rnaseq"))) {
-    app_data$rnaseq_dir <- file.path(DATA_DIR, "rnaseq")
-    app_data$has_rnaseq <- TRUE
-    message("  Found RNA-seq data directory")
-}
+# Check which data directories exist and have valid data
+if (dir.exists(DATA_DIR)) {
 
-if (dir.exists(file.path(DATA_DIR, "proteomics"))) {
-    app_data$proteomics_dir <- file.path(DATA_DIR, "proteomics")
-    app_data$has_proteomics <- TRUE
-    message("  Found Proteomics data directory")
-}
+    # RNA-seq
+    rnaseq_path <- file.path(DATA_DIR, "rnaseq")
+    validation <- validate_data_dir(rnaseq_path, "rnaseq")
+    if (validation$valid) {
+        app_data$rnaseq_dir <- rnaseq_path
+        app_data$has_rnaseq <- TRUE
+        app_data$rnaseq_files <- validation$files
+        message("  [OK] RNA-seq: ", validation$message)
+        if (any(!validation$expected_found)) {
+            missing <- names(validation$expected_found)[!validation$expected_found]
+            message("       Note: Some expected patterns not found: ",
+                    paste(missing, collapse = ", "))
+        }
+    } else {
+        message("  [--] RNA-seq: ", validation$message)
+    }
 
-if (dir.exists(file.path(DATA_DIR, "metabolomics"))) {
-    app_data$metabolomics_dir <- file.path(DATA_DIR, "metabolomics")
-    app_data$has_metabolomics <- TRUE
-    message("  Found Metabolomics data directory")
-}
+    # Proteomics
+    prot_path <- file.path(DATA_DIR, "proteomics")
+    validation <- validate_data_dir(prot_path, "proteomics")
+    if (validation$valid) {
+        app_data$proteomics_dir <- prot_path
+        app_data$has_proteomics <- TRUE
+        app_data$proteomics_files <- validation$files
+        message("  [OK] Proteomics: ", validation$message)
+    } else {
+        message("  [--] Proteomics: ", validation$message)
+    }
 
-if (dir.exists(file.path(DATA_DIR, "multiomics"))) {
-    app_data$multiomics_dir <- file.path(DATA_DIR, "multiomics")
-    app_data$has_multiomics <- TRUE
-    message("  Found Multi-omics data directory")
+    # Metabolomics
+    metab_path <- file.path(DATA_DIR, "metabolomics")
+    validation <- validate_data_dir(metab_path, "metabolomics")
+    if (validation$valid) {
+        app_data$metabolomics_dir <- metab_path
+        app_data$has_metabolomics <- TRUE
+        app_data$metabolomics_files <- validation$files
+        message("  [OK] Metabolomics: ", validation$message)
+    } else {
+        message("  [--] Metabolomics: ", validation$message)
+    }
+
+    # Multi-omics
+    multi_path <- file.path(DATA_DIR, "multiomics")
+    validation <- validate_data_dir(multi_path, "multiomics")
+    if (validation$valid) {
+        app_data$multiomics_dir <- multi_path
+        app_data$has_multiomics <- TRUE
+        app_data$multiomics_files <- validation$files
+        message("  [OK] Multi-omics: ", validation$message)
+    } else {
+        message("  [--] Multi-omics: ", validation$message)
+    }
+
+} else {
+    message("  WARNING: Data directory does not exist!")
+    message("  Path: ", DATA_DIR)
 }
 
 # Check if config file exists with project name
@@ -126,7 +229,22 @@ if (file.exists(config_file)) {
     }
 }
 
-message("Data scan complete! App ready to launch.")
+# Summary
+total_found <- sum(app_data$has_rnaseq, app_data$has_proteomics,
+                   app_data$has_metabolomics, app_data$has_multiomics)
+
+message("========================================")
+if (total_found == 0) {
+    message("WARNING: No valid data found!")
+    message("Make sure your data directory contains subdirectories:")
+    message("  rnaseq/       - with DE results, PCA data, etc.")
+    message("  proteomics/   - with differential results, normalized matrix, etc.")
+    message("  metabolomics/ - with normalized matrix, PCA data, etc.")
+    message("  multiomics/   - with MOFA, DIABLO results, etc.")
+} else {
+    message("Found ", total_found, " data type(s). App ready to launch!")
+}
+message("========================================")
 
 # =============================================================================
 # Color Palettes
