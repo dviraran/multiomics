@@ -81,29 +81,29 @@ rnaseq_main_server <- function(id, data_dir) {
 rnaseq_qc_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
-
-        # Library sizes
+    tagList(
+        # Library sizes - full width
         card(
+            full_screen = TRUE,
             card_header("Library Sizes"),
-            card_body(plotlyOutput(ns("library_sizes"), height = "350px"))
+            card_body(plotlyOutput(ns("library_sizes"), height = "400px"))
         ),
 
-        # Detected genes
+        # Detected genes - full width
         card(
+            full_screen = TRUE,
             card_header("Detected Genes"),
-            card_body(plotlyOutput(ns("detected_genes"), height = "350px"))
+            card_body(plotlyOutput(ns("detected_genes"), height = "400px"))
         ),
 
-        # Sample correlation heatmap
+        # Sample correlation heatmap - full width
         card(
             full_screen = TRUE,
             card_header("Sample Correlation"),
-            card_body(plotlyOutput(ns("correlation_heatmap"), height = "400px"))
+            card_body(plotlyOutput(ns("correlation_heatmap"), height = "500px"))
         ),
 
-        # QC metrics table
+        # QC metrics table - full width
         card(
             card_header("QC Metrics"),
             card_body(DTOutput(ns("qc_table")))
@@ -216,20 +216,19 @@ rnaseq_pca_ui <- function(id) {
             checkboxInput(ns("show_ellipse"), "Show confidence ellipse", TRUE)
         ),
 
-        layout_columns(
-            col_widths = c(8, 4),
-
-            # PCA scatter plot
+        tagList(
+            # PCA scatter plot - full width
             card(
                 full_screen = TRUE,
                 card_header("PCA Plot"),
-                card_body(plotlyOutput(ns("pca_plot"), height = "500px"))
+                card_body(plotlyOutput(ns("pca_plot"), height = "550px"))
             ),
 
-            # Scree plot
+            # Scree plot - full width
             card(
+                full_screen = TRUE,
                 card_header("Variance Explained"),
-                card_body(plotOutput(ns("scree_plot"), height = "250px"))
+                card_body(plotOutput(ns("scree_plot"), height = "350px"))
             )
         )
     )
@@ -328,23 +327,22 @@ rnaseq_de_ui <- function(id) {
             uiOutput(ns("de_summary"))
         ),
 
-        layout_columns(
-            col_widths = c(6, 6),
-
-            # Volcano plot
+        tagList(
+            # Volcano plot - full width
             card(
                 full_screen = TRUE,
                 card_header("Volcano Plot"),
-                card_body(plotlyOutput(ns("volcano_plot"), height = "450px"))
+                card_body(plotlyOutput(ns("volcano_plot"), height = "550px"))
             ),
 
-            # MA plot
+            # MA plot - full width
             card(
+                full_screen = TRUE,
                 card_header("MA Plot"),
                 card_body(plotlyOutput(ns("ma_plot"), height = "450px"))
             ),
 
-            # DE results table (full width)
+            # DE results table - full width
             card(
                 card_header("Differential Expression Results"),
                 card_body(DTOutput(ns("de_table")))
@@ -503,17 +501,15 @@ rnaseq_pathway_ui <- function(id) {
                         min = 10, max = 50, value = 20)
         ),
 
-        layout_columns(
-            col_widths = c(7, 5),
-
-            # Pathway dot plot
+        tagList(
+            # Pathway dot plot - full width
             card(
                 full_screen = TRUE,
                 card_header("Pathway Enrichment"),
-                card_body(plotlyOutput(ns("pathway_plot"), height = "500px"))
+                card_body(plotlyOutput(ns("pathway_plot"), height = "600px"))
             ),
 
-            # Pathway table
+            # Pathway table - full width
             card(
                 card_header("Enrichment Results"),
                 card_body(DTOutput(ns("pathway_table")))

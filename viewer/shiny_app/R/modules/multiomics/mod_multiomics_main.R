@@ -164,16 +164,31 @@ multiomics_correlations_ui <- function(id) {
     layout_sidebar(
         sidebar = sidebar(
             width = 250,
-            selectInput(ns("omics_pair"), "Omics Pair:", choices = NULL),
-            sliderInput(ns("cor_thresh"), "Min correlation:", min = 0, max = 1, value = 0.5, step = 0.1)
+            selectInput(ns("data_source"), "Data Source:", choices = NULL),
+            sliderInput(ns("cor_thresh"), "Min |correlation|:", min = 0, max = 1, value = 0.5, step = 0.1),
+            numericInput(ns("top_n"), "Top N to show:", value = 500, min = 100, max = 5000)
         ),
 
-        layout_columns(
-            col_widths = c(6, 6),
-            card(full_screen = TRUE, card_header("Correlation Distribution"),
-                 card_body(plotlyOutput(ns("cor_hist"), height = "400px"))),
-            card(full_screen = TRUE, card_header("Top Correlations"),
-                 card_body(DTOutput(ns("cor_table"))))
+        tagList(
+            # Correlation histogram - full width
+            card(
+                full_screen = TRUE,
+                card_header("Correlation Distribution"),
+                card_body(plotlyOutput(ns("cor_hist"), height = "400px"))
+            ),
+
+            # Hub regulators (if available)
+            card(
+                full_screen = TRUE,
+                card_header("Hub Regulators / Top Nodes"),
+                card_body(DTOutput(ns("hub_table")))
+            ),
+
+            # Correlation table - full width
+            card(
+                card_header("Correlation Details"),
+                card_body(DTOutput(ns("cor_table")))
+            )
         )
     )
 }
@@ -181,47 +196,122 @@ multiomics_correlations_ui <- function(id) {
 multiomics_correlations_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
 
+        # Determine available data sources
         observe({
             data <- data_reactive()
-            if (!is.null(data) && !is.null(data$crossomics_correlations)) {
-                pairs <- names(data$crossomics_correlations)
-                updateSelectInput(session, "omics_pair", choices = pairs,
-                                  selected = if(length(pairs) > 0) pairs[1] else NULL)
+            if (is.null(data)) return()
+
+            sources <- c()
+            if (!is.null(data$crossomics_correlations) && length(data$crossomics_correlations) > 0) {
+                sources <- c(sources, paste0("crossomics_", names(data$crossomics_correlations)))
             }
+            if (!is.null(data$regulatory_network)) {
+                sources <- c(sources, "regulatory_network")
+            }
+            if (!is.null(data$rna_protein_cors)) {
+                sources <- c(sources, "rna_protein_cors")
+            }
+
+            if (length(sources) == 0) {
+                sources <- "No correlation data"
+            }
+
+            updateSelectInput(session, "data_source", choices = sources,
+                              selected = if(length(sources) > 0) sources[1] else NULL)
         })
 
+        # Get current correlation data based on selection
         current_cors <- reactive({
             data <- data_reactive()
-            req(input$omics_pair, data, data$crossomics_correlations)
-            data$crossomics_correlations[[input$omics_pair]]
+            req(input$data_source, data)
+
+            if (input$data_source == "No correlation data") return(NULL)
+
+            if (input$data_source == "regulatory_network") {
+                return(data$regulatory_network)
+            } else if (input$data_source == "rna_protein_cors") {
+                return(data$rna_protein_cors)
+            } else if (startsWith(input$data_source, "crossomics_")) {
+                key <- gsub("^crossomics_", "", input$data_source)
+                return(data$crossomics_correlations[[key]])
+            }
+            NULL
         })
 
         output$cor_hist <- renderPlotly({
-            req(current_cors())
             cors <- current_cors()
-            cor_col <- intersect(c("correlation", "cor", "r", "spearman"), colnames(cors))[1]
-            if (is.na(cor_col)) return(NULL)
+            if (is.null(cors) || nrow(cors) == 0) {
+                return(plotly_empty() %>%
+                         layout(title = "No correlation data available"))
+            }
 
-            p <- ggplot(cors, aes_string(x = cor_col)) +
+            cor_col <- intersect(c("correlation", "cor", "r", "spearman"), colnames(cors))[1]
+            if (is.na(cor_col)) {
+                return(plotly_empty() %>%
+                         layout(title = "No correlation column found"))
+            }
+
+            # Sample if too large for plotting
+            plot_data <- cors
+            if (nrow(plot_data) > 50000) {
+                plot_data <- plot_data[sample(nrow(plot_data), 50000), ]
+            }
+
+            p <- ggplot(plot_data, aes_string(x = cor_col)) +
                 geom_histogram(bins = 50, fill = "#3498db", alpha = 0.7) +
                 geom_vline(xintercept = c(-input$cor_thresh, input$cor_thresh),
                            linetype = "dashed", color = "#e74c3c") +
-                labs(x = "Correlation", y = "Count") +
+                labs(x = "Correlation", y = "Count",
+                     title = paste("Distribution (", format(nrow(cors), big.mark = ","), " total)", sep = "")) +
                 theme_minimal()
             ggplotly(p)
         })
 
+        output$hub_table <- renderDT({
+            data <- data_reactive()
+            if (!is.null(data) && !is.null(data$hub_regulators)) {
+                datatable(
+                    head(data$hub_regulators, 100),
+                    options = list(pageLength = 10, scrollX = TRUE),
+                    rownames = FALSE
+                )
+            } else {
+                # Create summary from regulatory network if available
+                cors <- current_cors()
+                if (!is.null(cors) && "regulator" %in% colnames(cors)) {
+                    hub_summary <- as.data.frame(table(cors$regulator))
+                    names(hub_summary) <- c("regulator", "n_targets")
+                    hub_summary <- hub_summary[order(-hub_summary$n_targets), ]
+                    datatable(
+                        head(hub_summary, 50),
+                        options = list(pageLength = 10),
+                        rownames = FALSE
+                    )
+                } else {
+                    NULL
+                }
+            }
+        })
+
         output$cor_table <- renderDT({
-            req(current_cors())
             cors <- current_cors()
+            if (is.null(cors) || nrow(cors) == 0) return(NULL)
+
             cor_col <- intersect(c("correlation", "cor", "r", "spearman"), colnames(cors))[1]
             if (is.na(cor_col)) return(NULL)
 
+            # Filter by threshold
             filtered <- cors[abs(cors[[cor_col]]) >= input$cor_thresh, ]
             filtered <- filtered[order(-abs(filtered[[cor_col]])), ]
-            datatable(head(filtered, 100),
-                      options = list(pageLength = 10, scrollX = TRUE),
-                      rownames = FALSE)
+
+            # Limit to top N
+            filtered <- head(filtered, input$top_n)
+
+            datatable(
+                filtered,
+                options = list(pageLength = 15, scrollX = TRUE),
+                rownames = FALSE
+            )
         })
     })
 }
@@ -233,30 +323,37 @@ multiomics_correlations_server <- function(id, data_reactive) {
 multiomics_mofa_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
+    layout_sidebar(
+        sidebar = sidebar(
+            width = 200,
+            selectInput(ns("factor_x"), "X-axis:", choices = paste0("Factor", 1:10), selected = "Factor1"),
+            selectInput(ns("factor_y"), "Y-axis:", choices = paste0("Factor", 1:10), selected = "Factor2"),
+            selectInput(ns("color_by"), "Color:", choices = NULL),
+            hr(),
+            selectInput(ns("weight_factor"), "Weights Factor:", choices = NULL, width = "100%")
+        ),
 
-        card(full_screen = TRUE, card_header("Variance Explained by Factor"),
-             card_body(plotlyOutput(ns("variance_heatmap"), height = "400px"))),
+        tagList(
+            # Variance explained - full width
+            card(
+                full_screen = TRUE,
+                card_header("Variance Explained by Factor"),
+                card_body(plotlyOutput(ns("variance_heatmap"), height = "400px"))
+            ),
 
-        card(full_screen = TRUE, card_header("Factor Scores"),
-             card_body(
-                 layout_sidebar(
-                     sidebar = sidebar(
-                         width = 150,
-                         selectInput(ns("factor_x"), "X-axis:", choices = paste0("Factor", 1:10), selected = "Factor1"),
-                         selectInput(ns("factor_y"), "Y-axis:", choices = paste0("Factor", 1:10), selected = "Factor2"),
-                         selectInput(ns("color_by"), "Color:", choices = NULL)
-                     ),
-                     plotlyOutput(ns("factor_plot"), height = "350px")
-                 )
-             )),
+            # Factor scores - full width
+            card(
+                full_screen = TRUE,
+                card_header("Factor Scores"),
+                card_body(plotlyOutput(ns("factor_plot"), height = "500px"))
+            ),
 
-        card(card_header("Top Feature Weights"),
-             card_body(
-                 selectInput(ns("weight_factor"), "Factor:", choices = NULL, width = "200px"),
-                 DTOutput(ns("weights_table"))
-             ))
+            # Feature weights - full width
+            card(
+                card_header("Top Feature Weights"),
+                card_body(DTOutput(ns("weights_table")))
+            )
+        )
     )
 }
 
@@ -365,20 +462,33 @@ multiomics_mofa_server <- function(id, data_reactive) {
 multiomics_diablo_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
+    layout_sidebar(
+        sidebar = sidebar(
+            width = 200,
+            selectInput(ns("score_view"), "View:", choices = NULL)
+        ),
 
-        card(full_screen = TRUE, card_header("Sample Scores"),
-             card_body(
-                 selectInput(ns("score_view"), "View:", choices = NULL, width = "200px"),
-                 plotlyOutput(ns("scores_plot"), height = "400px")
-             )),
+        tagList(
+            # Sample scores - full width
+            card(
+                full_screen = TRUE,
+                card_header("Sample Scores"),
+                card_body(plotlyOutput(ns("scores_plot"), height = "500px"))
+            ),
 
-        card(full_screen = TRUE, card_header("Cross-validation Performance"),
-             card_body(plotlyOutput(ns("cv_plot"), height = "400px"))),
+            # CV performance - full width
+            card(
+                full_screen = TRUE,
+                card_header("Cross-validation Performance"),
+                card_body(plotlyOutput(ns("cv_plot"), height = "400px"))
+            ),
 
-        card(card_header("Selected Features"),
-             card_body(DTOutput(ns("loadings_table"))))
+            # Selected features - full width
+            card(
+                card_header("Selected Features"),
+                card_body(DTOutput(ns("loadings_table")))
+            )
+        )
     )
 }
 
@@ -458,17 +568,26 @@ multiomics_diablo_server <- function(id, data_reactive) {
 multiomics_concordance_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
+    tagList(
+        # RNA vs Protein FC - full width
+        card(
+            full_screen = TRUE,
+            card_header("RNA vs Protein Fold Change"),
+            card_body(plotlyOutput(ns("fc_scatter"), height = "500px"))
+        ),
 
-        card(full_screen = TRUE, card_header("RNA vs Protein Fold Change"),
-             card_body(plotlyOutput(ns("fc_scatter"), height = "450px"))),
+        # Correlation distribution - full width
+        card(
+            full_screen = TRUE,
+            card_header("Correlation Distribution"),
+            card_body(plotlyOutput(ns("cor_dist"), height = "400px"))
+        ),
 
-        card(full_screen = TRUE, card_header("Correlation Distribution"),
-             card_body(plotlyOutput(ns("cor_dist"), height = "450px"))),
-
-        card(card_header("Concordance Summary"),
-             card_body(DTOutput(ns("concordance_table"))))
+        # Concordance table - full width
+        card(
+            card_header("Concordance Summary"),
+            card_body(DTOutput(ns("concordance_table")))
+        )
     )
 }
 

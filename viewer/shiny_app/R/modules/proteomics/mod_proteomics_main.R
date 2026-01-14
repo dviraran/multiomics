@@ -78,29 +78,25 @@ proteomics_main_server <- function(id, data_dir) {
 proteomics_qc_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
-
-        # Missing values heatmap
+    tagList(
+        # Missing values heatmap - full width
         card(
             full_screen = TRUE,
             card_header("Missing Value Pattern"),
-            card_body(plotlyOutput(ns("missing_heatmap"), height = "400px"))
+            card_body(plotlyOutput(ns("missing_heatmap"), height = "450px"))
         ),
 
-        # Sample correlation
+        # Sample correlation - full width
         card(
             full_screen = TRUE,
             card_header("Sample Correlation"),
-            card_body(plotlyOutput(ns("correlation_heatmap"), height = "400px"))
+            card_body(plotlyOutput(ns("correlation_heatmap"), height = "450px"))
         ),
 
-        # QC metrics
+        # QC metrics - full width
         card(
             card_header("QC Summary"),
-            card_body(
-                uiOutput(ns("qc_summary"))
-            )
+            card_body(uiOutput(ns("qc_summary")))
         )
     )
 }

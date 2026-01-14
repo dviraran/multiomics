@@ -332,13 +332,17 @@ load_multiomics_data <- function(data_dir) {
 
     data$diablo_cv <- safe_read_csv(file.path(tables_dir, "diablo_cv_error_rates.csv"))
 
-    # Cross-omics correlations
+    # Cross-omics correlations - try multiple file patterns
     cor_files <- list.files(tables_dir, pattern = "^crossomics_correlations.*\\.csv$", full.names = TRUE)
     if (length(cor_files) > 0) {
         data$crossomics_correlations <- lapply(cor_files, safe_read_csv)
         names(data$crossomics_correlations) <- gsub("crossomics_correlations_?", "",
                                                      tools::file_path_sans_ext(basename(cor_files)))
     }
+
+    # Regulatory network edges (alternative correlation data)
+    data$regulatory_network <- safe_read_csv(file.path(tables_dir, "regulatory_network_edges.csv"))
+    data$hub_regulators <- safe_read_csv(file.path(tables_dir, "hub_regulators.csv"))
 
     # RNA-Protein specific correlations
     data$rna_protein_cors <- safe_read_csv(file.path(tables_dir, "rna_protein_correlations.csv"))
@@ -361,7 +365,9 @@ load_multiomics_data <- function(data_dir) {
     data$has_mofa <- !is.null(data$mofa_factors)
     data$has_diablo <- !is.null(data$diablo_scores) && length(data$diablo_scores) > 0
     data$has_correlations <- !is.null(data$crossomics_correlations) ||
-                              !is.null(data$rna_protein_cors)
+                              !is.null(data$rna_protein_cors) ||
+                              !is.null(data$regulatory_network)
+    data$has_regulatory_network <- !is.null(data$regulatory_network)
     data$has_pathway_overlap <- !is.null(data$pathway_overlap)
 
     # Determine available omics types
