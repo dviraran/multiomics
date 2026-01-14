@@ -73,24 +73,30 @@ multiomics_main_server <- function(id, data_dir) {
 multiomics_overview_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(4, 4, 4),
+    layout_column_wrap(
+        width = 0.5,  # Two columns side by side
 
-        card(
-            card_header("Data Summary", class = "bg-primary text-white"),
-            card_body(uiOutput(ns("data_summary")))
+        # Summary cards in a row using nested layout
+        layout_column_wrap(
+            width = 1/3,  # Three cards per row for summary
+
+            card(
+                card_header("Data Summary", class = "bg-primary text-white"),
+                card_body(uiOutput(ns("data_summary")))
+            ),
+
+            card(
+                card_header("Integration Methods", class = "bg-success text-white"),
+                card_body(uiOutput(ns("methods_summary")))
+            ),
+
+            card(
+                card_header("Omics Types", class = "bg-info text-white"),
+                card_body(uiOutput(ns("omics_summary")))
+            )
         ),
 
-        card(
-            card_header("Integration Methods", class = "bg-success text-white"),
-            card_body(uiOutput(ns("methods_summary")))
-        ),
-
-        card(
-            card_header("Omics Types", class = "bg-info text-white"),
-            card_body(uiOutput(ns("omics_summary")))
-        ),
-
+        # Full-width table below
         card(
             card_header("MultiAssayExperiment Summary"),
             card_body(DTOutput(ns("mae_table")))
@@ -169,12 +175,14 @@ multiomics_correlations_ui <- function(id) {
             numericInput(ns("top_n"), "Top N to show:", value = 500, min = 100, max = 5000)
         ),
 
-        tagList(
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
             # Correlation histogram - full width
             card(
                 full_screen = TRUE,
                 card_header("Correlation Distribution"),
-                card_body(plotlyOutput(ns("cor_hist"), height = "400px"))
+                card_body(plotlyOutput(ns("cor_hist"), height = "800px"))
             ),
 
             # Hub regulators (if available)
@@ -333,19 +341,21 @@ multiomics_mofa_ui <- function(id) {
             selectInput(ns("weight_factor"), "Weights Factor:", choices = NULL, width = "100%")
         ),
 
-        tagList(
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
             # Variance explained - full width
             card(
                 full_screen = TRUE,
                 card_header("Variance Explained by Factor"),
-                card_body(plotlyOutput(ns("variance_heatmap"), height = "400px"))
+                card_body(plotlyOutput(ns("variance_heatmap"), height = "800px"))
             ),
 
             # Factor scores - full width
             card(
                 full_screen = TRUE,
                 card_header("Factor Scores"),
-                card_body(plotlyOutput(ns("factor_plot"), height = "500px"))
+                card_body(plotlyOutput(ns("factor_plot"), height = "800px"))
             ),
 
             # Feature weights - full width
@@ -468,19 +478,21 @@ multiomics_diablo_ui <- function(id) {
             selectInput(ns("score_view"), "View:", choices = NULL)
         ),
 
-        tagList(
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
             # Sample scores - full width
             card(
                 full_screen = TRUE,
                 card_header("Sample Scores"),
-                card_body(plotlyOutput(ns("scores_plot"), height = "500px"))
+                card_body(plotlyOutput(ns("scores_plot"), height = "800px"))
             ),
 
             # CV performance - full width
             card(
                 full_screen = TRUE,
                 card_header("Cross-validation Performance"),
-                card_body(plotlyOutput(ns("cv_plot"), height = "400px"))
+                card_body(plotlyOutput(ns("cv_plot"), height = "800px"))
             ),
 
             # Selected features - full width
@@ -568,19 +580,21 @@ multiomics_diablo_server <- function(id, data_reactive) {
 multiomics_concordance_ui <- function(id) {
     ns <- NS(id)
 
-    tagList(
+    layout_column_wrap(
+        width = 0.5,  # Two columns side by side
+
         # RNA vs Protein FC - full width
         card(
             full_screen = TRUE,
             card_header("RNA vs Protein Fold Change"),
-            card_body(plotlyOutput(ns("fc_scatter"), height = "500px"))
+            card_body(plotlyOutput(ns("fc_scatter"), height = "800px"))
         ),
 
         # Correlation distribution - full width
         card(
             full_screen = TRUE,
             card_header("Correlation Distribution"),
-            card_body(plotlyOutput(ns("cor_dist"), height = "400px"))
+            card_body(plotlyOutput(ns("cor_dist"), height = "800px"))
         ),
 
         # Concordance table - full width

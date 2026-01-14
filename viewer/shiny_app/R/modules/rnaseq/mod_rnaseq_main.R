@@ -81,26 +81,29 @@ rnaseq_main_server <- function(id, data_dir) {
 rnaseq_qc_ui <- function(id) {
     ns <- NS(id)
 
-    tagList(
+    # Use layout_column_wrap with width=0.5 for two columns side by side
+    layout_column_wrap(
+        width = 0.5,  # Two columns = half width each
+
         # Library sizes - full width
         card(
             full_screen = TRUE,
             card_header("Library Sizes"),
-            card_body(plotlyOutput(ns("library_sizes"), height = "400px"))
+            card_body(plotlyOutput(ns("library_sizes"), height = "800px"))
         ),
 
         # Detected genes - full width
         card(
             full_screen = TRUE,
             card_header("Detected Genes"),
-            card_body(plotlyOutput(ns("detected_genes"), height = "400px"))
+            card_body(plotlyOutput(ns("detected_genes"), height = "800px"))
         ),
 
         # Sample correlation heatmap - full width
         card(
             full_screen = TRUE,
             card_header("Sample Correlation"),
-            card_body(plotlyOutput(ns("correlation_heatmap"), height = "500px"))
+            card_body(plotlyOutput(ns("correlation_heatmap"), height = "800px"))
         ),
 
         # QC metrics table - full width
@@ -125,11 +128,12 @@ rnaseq_qc_server <- function(id, data_reactive) {
 
             if (is.na(count_col)) return(NULL)
 
-            # Sort by count
+            # Sort by count and add plotting column
             qc <- qc[order(qc[[count_col]], decreasing = TRUE), ]
             qc$sample <- factor(qc$sample, levels = qc$sample)
+            qc$y_value <- qc[[count_col]]
 
-            p <- ggplot(qc, aes(x = sample, y = .data[[count_col]])) +
+            p <- ggplot(qc, aes(x = sample, y = y_value)) +
                 geom_col(fill = "#3498db", alpha = 0.8) +
                 labs(x = "Sample", y = "Total Counts") +
                 theme_minimal() +
@@ -149,11 +153,12 @@ rnaseq_qc_server <- function(id, data_reactive) {
 
             if (is.na(gene_col)) return(NULL)
 
-            # Sort by gene count
+            # Sort by gene count and add plotting column
             qc <- qc[order(qc[[gene_col]], decreasing = TRUE), ]
             qc$sample <- factor(qc$sample, levels = qc$sample)
+            qc$y_value <- qc[[gene_col]]
 
-            p <- ggplot(qc, aes(x = sample, y = .data[[gene_col]])) +
+            p <- ggplot(qc, aes(x = sample, y = y_value)) +
                 geom_col(fill = "#2ecc71", alpha = 0.8) +
                 labs(x = "Sample", y = "Detected Genes") +
                 theme_minimal() +
@@ -218,19 +223,21 @@ rnaseq_pca_ui <- function(id) {
             checkboxInput(ns("show_ellipse"), "Show confidence ellipse", TRUE)
         ),
 
-        tagList(
-            # PCA scatter plot - full width
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
+            # PCA scatter plot
             card(
                 full_screen = TRUE,
                 card_header("PCA Plot"),
-                card_body(plotlyOutput(ns("pca_plot"), height = "550px"))
+                card_body(plotlyOutput(ns("pca_plot"), height = "800px"))
             ),
 
             # Scree plot - full width
             card(
                 full_screen = TRUE,
                 card_header("Variance Explained"),
-                card_body(plotOutput(ns("scree_plot"), height = "350px"))
+                card_body(plotOutput(ns("scree_plot"), height = "800px"))
             )
         )
     )
@@ -329,19 +336,21 @@ rnaseq_de_ui <- function(id) {
             uiOutput(ns("de_summary"))
         ),
 
-        tagList(
-            # Volcano plot - full width
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
+            # Volcano plot
             card(
                 full_screen = TRUE,
                 card_header("Volcano Plot"),
-                card_body(plotlyOutput(ns("volcano_plot"), height = "550px"))
+                card_body(plotlyOutput(ns("volcano_plot"), height = "800px"))
             ),
 
             # MA plot - full width
             card(
                 full_screen = TRUE,
                 card_header("MA Plot"),
-                card_body(plotlyOutput(ns("ma_plot"), height = "450px"))
+                card_body(plotlyOutput(ns("ma_plot"), height = "800px"))
             ),
 
             # DE results table - full width
@@ -503,12 +512,14 @@ rnaseq_pathway_ui <- function(id) {
                         min = 10, max = 50, value = 20)
         ),
 
-        tagList(
-            # Pathway dot plot - full width
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
+            # Pathway dot plot
             card(
                 full_screen = TRUE,
                 card_header("Pathway Enrichment"),
-                card_body(plotlyOutput(ns("pathway_plot"), height = "600px"))
+                card_body(plotlyOutput(ns("pathway_plot"), height = "800px"))
             ),
 
             # Pathway table - full width
@@ -627,7 +638,7 @@ rnaseq_browser_ui <- function(id) {
         card(
             full_screen = TRUE,
             card_header(textOutput(ns("gene_title"))),
-            card_body(plotlyOutput(ns("expression_plot"), height = "400px"))
+            card_body(plotlyOutput(ns("expression_plot"), height = "800px"))
         )
     )
 }

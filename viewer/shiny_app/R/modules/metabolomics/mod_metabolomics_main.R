@@ -66,13 +66,13 @@ metabolomics_main_server <- function(id, data_dir) {
 metabolomics_qc_ui <- function(id) {
     ns <- NS(id)
 
-    layout_columns(
-        col_widths = c(6, 6),
+    layout_column_wrap(
+        width = 0.5,  # Two columns side by side
 
         card(
             full_screen = TRUE,
             card_header("Missing Value Pattern"),
-            card_body(plotlyOutput(ns("missing_heatmap"), height = "400px"))
+            card_body(plotlyOutput(ns("missing_heatmap"), height = "800px"))
         ),
 
         card(
@@ -150,7 +150,7 @@ metabolomics_pca_ui <- function(id) {
         card(
             full_screen = TRUE,
             card_header("PCA Plot"),
-            card_body(plotlyOutput(ns("pca_plot"), height = "500px"))
+            card_body(plotlyOutput(ns("pca_plot"), height = "800px"))
         )
     )
 }
@@ -239,10 +239,11 @@ metabolomics_da_ui <- function(id) {
             uiOutput(ns("da_summary"))
         ),
 
-        layout_columns(
-            col_widths = c(6, 6),
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
+
             card(full_screen = TRUE, card_header("Volcano Plot"),
-                 card_body(plotlyOutput(ns("volcano_plot"), height = "450px"))),
+                 card_body(plotlyOutput(ns("volcano_plot"), height = "800px"))),
             card(card_header("Results Table"),
                  card_body(DTOutput(ns("da_table"))))
         )
@@ -317,7 +318,7 @@ metabolomics_browser_ui <- function(id) {
         card(
             full_screen = TRUE,
             card_header(textOutput(ns("metab_title"))),
-            card_body(plotlyOutput(ns("abundance_plot"), height = "400px"))
+            card_body(plotlyOutput(ns("abundance_plot"), height = "800px"))
         )
     )
 }

@@ -78,19 +78,21 @@ proteomics_main_server <- function(id, data_dir) {
 proteomics_qc_ui <- function(id) {
     ns <- NS(id)
 
-    tagList(
+    layout_column_wrap(
+        width = 0.5,  # Two columns side by side
+
         # Missing values heatmap - full width
         card(
             full_screen = TRUE,
             card_header("Missing Value Pattern"),
-            card_body(plotlyOutput(ns("missing_heatmap"), height = "450px"))
+            card_body(plotlyOutput(ns("missing_heatmap"), height = "800px"))
         ),
 
         # Sample correlation - full width
         card(
             full_screen = TRUE,
             card_header("Sample Correlation"),
-            card_body(plotlyOutput(ns("correlation_heatmap"), height = "450px"))
+            card_body(plotlyOutput(ns("correlation_heatmap"), height = "800px"))
         ),
 
         # QC metrics - full width
@@ -207,7 +209,7 @@ proteomics_pca_ui <- function(id) {
         card(
             full_screen = TRUE,
             card_header("PCA Plot"),
-            card_body(plotlyOutput(ns("pca_plot"), height = "500px"))
+            card_body(plotlyOutput(ns("pca_plot"), height = "800px"))
         )
     )
 }
@@ -329,18 +331,19 @@ proteomics_da_ui <- function(id) {
             uiOutput(ns("da_summary"))
         ),
 
-        layout_columns(
-            col_widths = c(6, 6),
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
 
             card(
                 full_screen = TRUE,
                 card_header("Volcano Plot"),
-                card_body(plotlyOutput(ns("volcano_plot"), height = "450px"))
+                card_body(plotlyOutput(ns("volcano_plot"), height = "800px"))
             ),
 
             card(
+                full_screen = TRUE,
                 card_header("MA Plot"),
-                card_body(plotlyOutput(ns("ma_plot"), height = "450px"))
+                card_body(plotlyOutput(ns("ma_plot"), height = "800px"))
             ),
 
             card(
@@ -462,13 +465,13 @@ proteomics_ppi_ui <- function(id) {
             uiOutput(ns("network_stats"))
         ),
 
-        layout_columns(
-            col_widths = c(8, 4),
+        layout_column_wrap(
+            width = 0.5,  # Two columns side by side
 
             card(
                 full_screen = TRUE,
                 card_header("PPI Network"),
-                card_body(visNetworkOutput(ns("network_plot"), height = "550px"))
+                card_body(visNetworkOutput(ns("network_plot"), height = "800px"))
             ),
 
             card(
@@ -615,7 +618,7 @@ proteomics_browser_ui <- function(id) {
         card(
             full_screen = TRUE,
             card_header(textOutput(ns("protein_title"))),
-            card_body(plotlyOutput(ns("abundance_plot"), height = "400px"))
+            card_body(plotlyOutput(ns("abundance_plot"), height = "800px"))
         )
     )
 }
