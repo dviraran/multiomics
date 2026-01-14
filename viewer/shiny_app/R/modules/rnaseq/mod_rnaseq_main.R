@@ -125,10 +125,11 @@ rnaseq_qc_server <- function(id, data_reactive) {
 
             if (is.na(count_col)) return(NULL)
 
+            # Sort by count
             qc <- qc[order(qc[[count_col]], decreasing = TRUE), ]
+            qc$sample <- factor(qc$sample, levels = qc$sample)
 
-            p <- ggplot(qc, aes_string(x = "reorder(sample, -get(count_col))",
-                                       y = count_col)) +
+            p <- ggplot(qc, aes(x = sample, y = .data[[count_col]])) +
                 geom_col(fill = "#3498db", alpha = 0.8) +
                 labs(x = "Sample", y = "Total Counts") +
                 theme_minimal() +
@@ -148,10 +149,11 @@ rnaseq_qc_server <- function(id, data_reactive) {
 
             if (is.na(gene_col)) return(NULL)
 
+            # Sort by gene count
             qc <- qc[order(qc[[gene_col]], decreasing = TRUE), ]
+            qc$sample <- factor(qc$sample, levels = qc$sample)
 
-            p <- ggplot(qc, aes_string(x = "reorder(sample, -get(gene_col))",
-                                       y = gene_col)) +
+            p <- ggplot(qc, aes(x = sample, y = .data[[gene_col]])) +
                 geom_col(fill = "#2ecc71", alpha = 0.8) +
                 labs(x = "Sample", y = "Detected Genes") +
                 theme_minimal() +
