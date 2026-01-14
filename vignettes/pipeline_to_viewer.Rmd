@@ -1,0 +1,439 @@
+---
+title: "From Pipeline to Interactive Viewer"
+author: "Multi-Omics Pipelines"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# Introduction
+
+This guide walks you through the complete workflow from running an analysis pipeline to exploring your results in the interactive Shiny viewer. The viewer provides interactive plots, data tables, and exploration tools for all pipeline outputs.
+
+# Complete Workflow Example
+
+## Step 1: Prepare Your Data
+
+Create a project directory with your data files:
+
+```bash
+mkdir my_analysis
+cd my_analysis
+
+# Create directory structure
+mkdir -p rnaseq/data
+mkdir -p proteomics/data
+
+# Copy your data files
+cp /path/to/counts.csv rnaseq/data/
+cp /path/to/rnaseq_metadata.csv rnaseq/data/
+cp /path/to/protein_abundance.csv proteomics/data/
+cp /path/to/proteomics_metadata.csv proteomics/data/
+```
+
+## Step 2: Create Configuration Files
+
+### RNA-seq Config (`rnaseq/config.yml`)
+
+```yaml
+project_name: "My RNA-seq Analysis"
+organism: "Homo sapiens"
+
+input:
+  counts_file: "data/counts.csv"
+  metadata_file: "data/metadata.csv"
+  sample_id_column: "sample_id"
+  condition_column: "condition"
+
+output:
+  base_dir: "outputs"
+
+filtering:
+  min_counts: 10
+  min_samples: 3
+
+normalization:
+  method: "deseq2"
+
+differential:
+  contrasts:
+    - name: "Treatment_vs_Control"
+      numerator: "Treatment"
+      denominator: "Control"
+
+enrichment:
+  run_gsea: true
+  gmt_sources:
+    - "GO_BP"
+    - "KEGG"
+```
+
+### Proteomics Config (`proteomics/config.yml`)
+
+```yaml
+project_name: "My Proteomics Analysis"
+organism: "Homo sapiens"
+
+input:
+  data_file: "data/protein_abundance.csv"
+  metadata_file: "data/metadata.csv"
+  input_format: "generic"
+  sample_id_column: "sample_id"
+  condition_column: "condition"
+
+output:
+  base_dir: "outputs"
+
+normalization:
+  method: "vsn"
+
+imputation:
+  method: "MinProb"
+
+differential:
+  contrasts:
+    - name: "Treatment_vs_Control"
+      numerator: "Treatment"
+      denominator: "Control"
+```
+
+## Step 3: Run the Pipelines
+
+```{r}
+# Navigate to the multiomics repository
+setwd("/path/to/multiomics")
+
+# Load the pipeline runner
+source("pipeline_runner.R")
+
+# Run RNA-seq pipeline
+run_rnaseq_pipeline("/path/to/my_analysis/rnaseq/config.yml")
+
+# Run Proteomics pipeline
+run_proteomics_pipeline("/path/to/my_analysis/proteomics/config.yml")
+```
+
+This will create output directories:
+- `my_analysis/rnaseq/outputs/`
+- `my_analysis/proteomics/outputs/`
+
+## Step 4: Launch the Viewer
+
+### Quick View (Single Pipeline)
+
+```{r}
+source("viewer/run_viewer.R")
+
+# View RNA-seq results
+run_viewer("/path/to/my_analysis/rnaseq/outputs")
+```
+
+### View Multiple Pipelines
+
+Create a data directory structure that the viewer expects:
+
+```bash
+# Create viewer data directory
+mkdir -p viewer_data/rnaseq
+mkdir -p viewer_data/proteomics
+
+# Copy outputs (or symlink them)
+cp -r my_analysis/rnaseq/outputs/* viewer_data/rnaseq/
+cp -r my_analysis/proteomics/outputs/* viewer_data/proteomics/
+```
+
+Then launch:
+
+```{r}
+source("viewer/run_viewer.R")
+run_viewer("/path/to/viewer_data")
+```
+
+# Using the Shiny Viewer
+
+## Overview
+
+The viewer automatically detects which data types are available and shows the appropriate tabs:
+
+| Tab | Available When | Features |
+|-----|----------------|----------|
+| RNA-seq | `rnaseq/` directory exists | QC, PCA, DE, GSEA |
+| Proteomics | `proteomics/` directory exists | QC, normalization, DE, pathways |
+| Metabolomics | `metabolomics/` directory exists | QC, drift correction, DE |
+| Multi-omics | `multiomics/` directory exists | MOFA, DIABLO, integration |
+
+## RNA-seq Tab Features
+
+### Quality Control
+
+- **Sample counts**: Total reads per sample
+- **Feature detection**: Genes detected per sample
+- **Filtering summary**: Features before/after filtering
+
+### PCA Plot
+
+Interactive 3D PCA plot showing:
+- Sample clustering by condition
+- Variance explained per PC
+- Hover for sample information
+
+### Differential Expression
+
+- **Volcano plot**: Interactive plot with hover labels
+  - Click points to see gene details
+  - Adjustable significance thresholds
+- **MA plot**: Log fold change vs mean expression
+- **Results table**: Sortable, searchable DE results
+  - Download as CSV
+  - Filter by p-value, fold change
+
+### Pathway Analysis (GSEA)
+
+- Enrichment dot plots
+- Leading edge heatmaps
+- Pathway tables with NES scores
+
+## Proteomics Tab Features
+
+### Normalization Comparison
+
+- Side-by-side boxplots before/after normalization
+- Distribution density plots
+
+### Missing Value Analysis
+
+- Missing value heatmap
+- Imputation effect visualization
+
+### Differential Abundance
+
+- Volcano plots per contrast
+- Protein abundance heatmaps
+- Searchable results tables
+
+## Multi-omics Tab Features
+
+### MOFA Results
+
+- Factor variance explained per omics layer
+- Sample factor scores (interactive scatter)
+- Top feature loadings per factor
+- Factor-phenotype associations
+
+### DIABLO Results
+
+- Sample projections per component
+- Loading plots showing selected features
+- Cross-omics correlation circles
+
+# Creating a Distributable Package
+
+Share your analysis with collaborators who may not have R expertise.
+
+## Generate the Package
+
+```{r}
+source("viewer/create_viewer_package.R")
+
+create_viewer_package(
+  data_dirs = list(
+    rnaseq = "/path/to/my_analysis/rnaseq/outputs",
+    proteomics = "/path/to/my_analysis/proteomics/outputs"
+  ),
+  output_dir = "my_analysis_viewer",
+  project_name = "My Multi-Omics Analysis"
+)
+```
+
+This creates a standalone folder with everything needed:
+
+```
+my_analysis_viewer/
+├── shiny_app/          # Complete Shiny application
+├── data/               # Copied analysis results
+│   ├── rnaseq/
+│   └── proteomics/
+├── run_viewer.R        # Simple launcher script
+├── install_packages.R  # Package installer
+└── README.txt          # Instructions
+```
+
+## Share with Collaborators
+
+Compress the folder and share:
+
+```bash
+zip -r my_analysis_viewer.zip my_analysis_viewer/
+```
+
+Collaborators just need to:
+
+1. Unzip the package
+2. Open R in the folder
+3. Run:
+
+```{r}
+source("install_packages.R")  # First time only
+source("run_viewer.R")
+```
+
+The viewer opens in their default web browser.
+
+# Complete Example: Cancer Dataset
+
+Here's a complete walkthrough using a hypothetical cancer dataset:
+
+## 1. Prepare Data Files
+
+```{r}
+# counts.csv - RNA-seq counts
+# Rows: Ensembl gene IDs
+# Columns: Sample IDs (matching metadata)
+
+# metadata.csv
+# sample_id, condition, batch, patient_id
+# S1, Tumor, Batch1, P1
+# S2, Normal, Batch1, P1
+# ...
+```
+
+## 2. Create and Run Pipeline
+
+```{r}
+# Set working directory
+setwd("/path/to/multiomics")
+
+# Load helper
+source("pipeline_runner.R")
+
+# Run the pipeline
+result <- run_rnaseq_pipeline("cancer_analysis/config.yml")
+
+# Check if successful
+if (result$status == "success") {
+  message("Pipeline completed in ", round(result$duration, 1), " minutes")
+} else {
+  message("Pipeline failed: ", result$error)
+}
+```
+
+## 3. Explore Results Interactively
+
+```{r}
+# Launch viewer
+source("viewer/run_viewer.R")
+run_viewer("cancer_analysis/outputs")
+```
+
+## 4. Export Key Findings
+
+While in the viewer:
+
+1. Navigate to **Differential Expression** tab
+2. Apply filters (e.g., padj < 0.05, |log2FC| > 1)
+3. Click **Download CSV** to export filtered results
+4. Navigate to **GSEA** tab
+5. Identify top enriched pathways
+
+# Troubleshooting
+
+## Viewer Won't Start
+
+**Problem**: Shiny app crashes on startup
+
+**Solutions**:
+1. Install missing packages:
+```{r}
+source("viewer/install_viewer.R")
+install_viewer_packages()
+```
+
+2. Check data directory structure:
+```{r}
+# Expected structure
+list.files("path/to/data", recursive = TRUE, pattern = "\\.csv$|\\.rds$")
+```
+
+## No Data Showing
+
+**Problem**: Tabs are empty or show "No data available"
+
+**Solutions**:
+1. Verify output files exist:
+```{r}
+# For RNA-seq, these files should exist:
+file.exists("outputs/tables/de_results.csv")
+file.exists("outputs/qc/pca_data.rds")
+```
+
+2. Check file formats are correct (CSV with headers)
+
+## Slow Performance
+
+**Problem**: Viewer is slow or unresponsive
+
+**Solutions**:
+1. The viewer uses lazy loading - data loads on first tab access
+2. Large datasets (>50k features) may be slow
+3. Try reducing data size:
+```r
+# In your config.yml, add more stringent filtering
+filtering:
+  min_counts: 50
+  min_samples: 5
+```
+
+## Package Installation Fails
+
+**Problem**: `install_viewer_packages()` fails
+
+**Solutions**:
+1. Install dependencies manually:
+```{r}
+install.packages(c("shiny", "bslib", "plotly", "DT", "heatmaply", "visNetwork"))
+```
+
+2. For Bioconductor packages:
+```{r}
+BiocManager::install("ComplexHeatmap")
+```
+
+# Tips for Best Results
+
+## Before Running Pipelines
+
+1. **Validate your data** - Run preflight checks
+2. **Check sample sizes** - Need at least 3 samples per group
+3. **Review metadata** - Ensure sample IDs match matrix columns
+
+## Configuring Analysis
+
+1. **Start simple** - Use default parameters first
+2. **Review QC** - Check the viewer's QC tab before diving into results
+3. **Iterate** - Adjust parameters based on QC findings
+
+## Sharing Results
+
+1. **Include the HTML report** - Found in `outputs/report/`
+2. **Create viewer package** - For interactive exploration
+3. **Export key tables** - DE results, enrichment results
+
+# Next Steps
+
+After exploring your results in the viewer:
+
+1. **Multi-omics integration** - If you have multiple data types
+2. **Custom visualization** - Export data for custom plots
+3. **Downstream analysis** - Use DE results for further analysis
+
+Happy analyzing!

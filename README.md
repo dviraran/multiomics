@@ -1,15 +1,15 @@
 # Multi-Omics Analysis Pipelines
 
-A collection of reproducible R pipelines for analyzing omics data, built with the [`{targets}`](https://docs.ropensci.org/targets/) framework.
+A collection of reproducible R pipelines for analyzing omics data, built with the [`{targets}`](https://docs.ropensci.org/targets/) framework. Includes an interactive **Shiny viewer** for exploring results.
 
 ## Pipelines
 
 | Pipeline | Description | Key Methods |
 |----------|-------------|-------------|
-| [rnaseq_pipeline](rnaseq_pipeline/) | RNA-seq differential expression analysis | DESeq2, fgsea, GO/KEGG enrichment |
-| [proteomics_pipeline](proteomics_pipeline/) | Mass spectrometry proteomics (LFQ/DIA) | limma, VSN normalization, MNAR imputation |
-| [metabolomics_pipeline](metabolomics_pipeline/) | LC-MS/GC-MS metabolomics | PQN normalization, drift correction, MetaboAnalyst-style QC |
-| [multiomics_pipeline](multiomics_pipeline/) | Multi-omics data integration | MOFA2, DIABLO (mixOmics), SNF |
+| [rnaseq_pipeline](src/pipelines/rnaseq_pipeline/) | RNA-seq differential expression analysis | DESeq2, fgsea, GO/KEGG enrichment |
+| [proteomics_pipeline](src/pipelines/proteomics_pipeline/) | Mass spectrometry proteomics (LFQ/DIA) | limma, VSN normalization, MNAR imputation |
+| [metabolomics_pipeline](src/pipelines/metabolomics_pipeline/) | LC-MS/GC-MS metabolomics | PQN normalization, drift correction, MetaboAnalyst-style QC |
+| [multiomics_pipeline](src/pipelines/multiomics_pipeline/) | Multi-omics data integration | MOFA2, DIABLO (mixOmics), SNF |
 
 ## Features
 
@@ -18,15 +18,38 @@ A collection of reproducible R pipelines for analyzing omics data, built with th
 - **Modular**: Functions organized in `R/` directory for easy customization
 - **Comprehensive QC**: Built-in quality control checks and visualizations
 - **Publication-ready**: Automated HTML reports with R Markdown
+- **Interactive Viewer**: Shiny app for exploring results with interactive plots
 - **AI Commentary** (RNA-seq/Proteomics): Optional LLM-generated figure interpretations
 - **Auto-install packages**: Prompts to install missing packages on first run
+
+## Directory Structure
+
+```
+multiomics/
+├── src/
+│   ├── pipelines/              # Analysis pipelines
+│   │   ├── rnaseq_pipeline/
+│   │   ├── proteomics_pipeline/
+│   │   ├── metabolomics_pipeline/
+│   │   └── multiomics_pipeline/
+│   ├── shared/                 # Shared R utilities
+│   └── scripts/                # Utility scripts
+├── viewer/                     # Shiny visualization app
+│   ├── shiny_app/              # The Shiny application
+│   ├── run_viewer.R            # Launch the viewer
+│   └── create_viewer_package.R # Create distributable package
+├── docker/                     # Docker configuration
+├── examples/                   # Example data and configs
+├── vignettes/                  # Tutorials
+└── pipeline_runner.R           # User-facing pipeline launcher
+```
 
 ## Quick Start
 
 ### Option 1: Run from pipeline directory
 
 ```bash
-cd <pipeline_name>
+cd src/pipelines/<pipeline_name>
 
 # 1. Edit config.yml with your settings
 # 2. Place data in data/ directory
@@ -67,18 +90,54 @@ cd examples/scripts
 Rscript run_all_pipelines.R --clean
 ```
 
-## Directory Structure
+## Viewing Results with Shiny
 
-Each pipeline contains:
+After running a pipeline, explore your results interactively with the Shiny viewer.
 
+### Quick Launch
+
+```r
+source("viewer/run_viewer.R")
+
+# View results from a pipeline output directory
+run_viewer("path/to/pipeline/outputs")
 ```
-<pipeline>/
-├── _targets.R           # Pipeline definition
-├── config.yml           # Configuration
-├── R/                   # Modular functions
-├── data/                # Input data (+ examples)
-├── outputs/             # Results (tables, plots)
-└── reports/             # R Markdown templates
+
+### Features
+
+The Shiny viewer provides interactive exploration of:
+
+| Tab | Features |
+|-----|----------|
+| **RNA-seq** | QC metrics, PCA, DE volcano/MA plots, expression heatmaps, GSEA results |
+| **Proteomics** | QC, normalization comparison, DE analysis, pathway enrichment |
+| **Metabolomics** | QC, drift correction, differential analysis, pathway mapping |
+| **Multi-omics** | MOFA factor exploration, DIABLO integration, cross-omics correlations |
+
+### Create a Distributable Package
+
+Share results with collaborators who don't have R expertise:
+
+```r
+source("viewer/create_viewer_package.R")
+
+create_viewer_package(
+  data_dirs = list(
+    rnaseq = "path/to/rnaseq/outputs",
+    proteomics = "path/to/proteomics/outputs",
+    metabolomics = "path/to/metabolomics/outputs",
+    multiomics = "path/to/multiomics/outputs"
+  ),
+  output_dir = "my_analysis_viewer",
+  project_name = "My Multi-Omics Analysis"
+)
+```
+
+This creates a standalone folder. Collaborators just need to:
+
+```r
+# After opening R in the viewer folder:
+source("run_viewer.R")
 ```
 
 ## Requirements
@@ -104,6 +163,9 @@ BiocManager::install(c(
   # Multi-omics
   "MOFA2", "mixOmics", "MultiAssayExperiment"
 ))
+
+# Shiny viewer packages
+install.packages(c("shiny", "bslib", "plotly", "DT", "heatmaply"))
 ```
 
 See individual pipeline READMEs for complete dependency lists.
@@ -150,6 +212,17 @@ Integrate 2-3 omics layers (RNA + Protein + Metabolites):
 - **SNF**: Network-based sample clustering
 - Cross-omics concordance (RNA-protein correlation)
 - Combined pathway enrichment
+
+## Docker Support
+
+Run pipelines in a containerized environment:
+
+```bash
+cd docker
+docker-compose up -d
+```
+
+See [docker/](docker/) for more details.
 
 ## License
 
