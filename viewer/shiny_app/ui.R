@@ -1,6 +1,7 @@
 # =============================================================================
-# Multi-Omics Viewer - User Interface
+# Multi-Omics Viewer - User Interface (LAZY LOADING)
 # =============================================================================
+# UI uses availability flags - data is loaded lazily in modules
 
 ui <- page_navbar(
     title = app_data$project_name,
@@ -27,21 +28,12 @@ ui <- page_navbar(
             card(
                 card_header("RNA-seq Analysis", class = "bg-primary text-white"),
                 card_body(
-                    if (!is.null(app_data$rnaseq)) {
+                    if (app_data$has_rnaseq) {
                         tagList(
                             tags$p(icon("check-circle", class = "text-success"),
-                                   " Data loaded"),
-                            tags$ul(
-                                if (app_data$rnaseq$has_de) {
-                                    tags$li(paste(length(app_data$rnaseq$contrasts), "contrast(s)"))
-                                },
-                                if (app_data$rnaseq$has_pathways) {
-                                    tags$li("Pathway enrichment available")
-                                },
-                                if (app_data$rnaseq$has_pca) {
-                                    tags$li("PCA results available")
-                                }
-                            )
+                                   " Data available"),
+                            tags$p(class = "text-muted small",
+                                   "Click the RNA-seq tab to explore")
                         )
                     } else {
                         tags$p(icon("times-circle", class = "text-muted"),
@@ -54,18 +46,12 @@ ui <- page_navbar(
             card(
                 card_header("Proteomics Analysis", class = "bg-success text-white"),
                 card_body(
-                    if (!is.null(app_data$proteomics)) {
+                    if (app_data$has_proteomics) {
                         tagList(
                             tags$p(icon("check-circle", class = "text-success"),
-                                   " Data loaded"),
-                            tags$ul(
-                                if (app_data$proteomics$has_de) {
-                                    tags$li(paste(length(app_data$proteomics$contrasts), "contrast(s)"))
-                                },
-                                if (app_data$proteomics$has_ppi) {
-                                    tags$li("PPI network available")
-                                }
-                            )
+                                   " Data available"),
+                            tags$p(class = "text-muted small",
+                                   "Click the Proteomics tab to explore")
                         )
                     } else {
                         tags$p(icon("times-circle", class = "text-muted"),
@@ -78,24 +64,12 @@ ui <- page_navbar(
             card(
                 card_header("Multi-omics Integration", class = "bg-info text-white"),
                 card_body(
-                    if (!is.null(app_data$multiomics)) {
+                    if (app_data$has_multiomics) {
                         tagList(
                             tags$p(icon("check-circle", class = "text-success"),
-                                   " Data loaded"),
-                            tags$ul(
-                                if (length(app_data$multiomics$omics_types) > 0) {
-                                    tags$li(paste("Omics:", paste(app_data$multiomics$omics_types, collapse = ", ")))
-                                },
-                                if (app_data$multiomics$has_mofa) {
-                                    tags$li("MOFA results available")
-                                },
-                                if (app_data$multiomics$has_diablo) {
-                                    tags$li("DIABLO results available")
-                                },
-                                if (app_data$multiomics$has_correlations) {
-                                    tags$li("Cross-omics correlations available")
-                                }
-                            )
+                                   " Data available"),
+                            tags$p(class = "text-muted small",
+                                   "Click the Multi-omics tab to explore")
                         )
                     } else {
                         tags$p(icon("times-circle", class = "text-muted"),
@@ -117,7 +91,7 @@ ui <- page_navbar(
                     tags$li(tags$strong("Multi-omics:"), " Cross-omics correlations, MOFA/DIABLO integration")
                 ),
                 tags$p(class = "text-muted",
-                       "Click on points in plots to see details. Use dropdowns to select contrasts and color variables.")
+                       "Data is loaded when you first access each tab. Click on points in plots to see details.")
             )
         )
     ),
@@ -130,7 +104,7 @@ ui <- page_navbar(
         icon = icon("dna"),
         value = "rnaseq",
 
-        if (!is.null(app_data$rnaseq)) {
+        if (app_data$has_rnaseq) {
             rnaseq_main_ui("rnaseq")
         } else {
             card(
@@ -150,7 +124,7 @@ ui <- page_navbar(
         icon = icon("cubes"),
         value = "proteomics",
 
-        if (!is.null(app_data$proteomics)) {
+        if (app_data$has_proteomics) {
             proteomics_main_ui("proteomics")
         } else {
             card(
@@ -170,7 +144,7 @@ ui <- page_navbar(
         icon = icon("flask"),
         value = "metabolomics",
 
-        if (!is.null(app_data$metabolomics)) {
+        if (app_data$has_metabolomics) {
             metabolomics_main_ui("metabolomics")
         } else {
             card(
@@ -190,7 +164,7 @@ ui <- page_navbar(
         icon = icon("project-diagram"),
         value = "multiomics",
 
-        if (!is.null(app_data$multiomics)) {
+        if (app_data$has_multiomics) {
             multiomics_main_ui("multiomics")
         } else {
             card(

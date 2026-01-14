@@ -2,7 +2,8 @@
 # Global Settings for Multi-Omics Viewer
 # =============================================================================
 # This file is sourced once when the app starts.
-# It loads packages, sets up the theme, and loads the data.
+# It loads packages, sets up the theme, and scans for available data.
+# LAZY LOADING: Data is NOT loaded here - only paths are discovered.
 
 # Required packages
 required_packages <- c(
@@ -25,9 +26,9 @@ required_packages <- c(
 for (pkg in required_packages) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
         stop(paste0("Package '", pkg, "' is required but not installed.\n",
-                    "Run source('install.R') first."))
+                    "Run source('install_viewer.R') first."))
     }
-    library(pkg, character.only = TRUE)
+    suppressPackageStartupMessages(library(pkg, character.only = TRUE))
 }
 
 # Source utility functions
@@ -61,7 +62,7 @@ app_theme <- bs_theme(
 )
 
 # =============================================================================
-# Load Data from ../data/ directory
+# LAZY LOADING: Only scan for available data directories (don't load data)
 # =============================================================================
 
 # Data directory is one level up from shiny_app
@@ -70,36 +71,50 @@ if (!dir.exists(DATA_DIR)) {
     DATA_DIR <- file.path(getwd(), "data")
 }
 
-# Load all pipeline data
-message("Loading data from: ", DATA_DIR)
+message("Scanning for data in: ", DATA_DIR)
 
+# Store paths and availability flags (NOT the actual data)
 app_data <- list(
-    rnaseq = NULL,
-    proteomics = NULL,
-    metabolomics = NULL,
-    multiomics = NULL,
+    # Paths to data directories
+    data_dir = DATA_DIR,
+    rnaseq_dir = NULL,
+    proteomics_dir = NULL,
+    metabolomics_dir = NULL,
+    multiomics_dir = NULL,
+
+    # Availability flags (for UI rendering)
+    has_rnaseq = FALSE,
+    has_proteomics = FALSE,
+    has_metabolomics = FALSE,
+    has_multiomics = FALSE,
+
+    # Project name
     project_name = "Multi-Omics Analysis"
 )
 
-# Try to load each pipeline's data
+# Check which data directories exist
 if (dir.exists(file.path(DATA_DIR, "rnaseq"))) {
-    message("Loading RNA-seq data...")
-    app_data$rnaseq <- load_rnaseq_data(file.path(DATA_DIR, "rnaseq"))
+    app_data$rnaseq_dir <- file.path(DATA_DIR, "rnaseq")
+    app_data$has_rnaseq <- TRUE
+    message("  Found RNA-seq data directory")
 }
 
 if (dir.exists(file.path(DATA_DIR, "proteomics"))) {
-    message("Loading Proteomics data...")
-    app_data$proteomics <- load_proteomics_data(file.path(DATA_DIR, "proteomics"))
+    app_data$proteomics_dir <- file.path(DATA_DIR, "proteomics")
+    app_data$has_proteomics <- TRUE
+    message("  Found Proteomics data directory")
 }
 
 if (dir.exists(file.path(DATA_DIR, "metabolomics"))) {
-    message("Loading Metabolomics data...")
-    app_data$metabolomics <- load_metabolomics_data(file.path(DATA_DIR, "metabolomics"))
+    app_data$metabolomics_dir <- file.path(DATA_DIR, "metabolomics")
+    app_data$has_metabolomics <- TRUE
+    message("  Found Metabolomics data directory")
 }
 
 if (dir.exists(file.path(DATA_DIR, "multiomics"))) {
-    message("Loading Multi-omics data...")
-    app_data$multiomics <- load_multiomics_data(file.path(DATA_DIR, "multiomics"))
+    app_data$multiomics_dir <- file.path(DATA_DIR, "multiomics")
+    app_data$has_multiomics <- TRUE
+    message("  Found Multi-omics data directory")
 }
 
 # Check if config file exists with project name
@@ -111,7 +126,7 @@ if (file.exists(config_file)) {
     }
 }
 
-message("Data loading complete!")
+message("Data scan complete! App ready to launch.")
 
 # =============================================================================
 # Color Palettes

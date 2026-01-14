@@ -1,7 +1,8 @@
 # =============================================================================
-# RNA-seq Main Module
+# RNA-seq Main Module (LAZY LOADING)
 # =============================================================================
 # Orchestrates all RNA-seq visualizations in a tabbed interface
+# Data is loaded only when this tab is first accessed
 
 rnaseq_main_ui <- function(id) {
     ns <- NS(id)
@@ -19,7 +20,7 @@ rnaseq_main_ui <- function(id) {
         # PCA Tab
         nav_panel(
             title = "PCA",
-            icon = icon("chart-scatter"),
+            icon = icon("circle-dot"),
             rnaseq_pca_ui(ns("pca"))
         ),
 
@@ -46,14 +47,30 @@ rnaseq_main_ui <- function(id) {
     )
 }
 
-rnaseq_main_server <- function(id, data) {
+rnaseq_main_server <- function(id, data_dir) {
     moduleServer(id, function(input, output, session) {
-        # Call sub-modules
-        rnaseq_qc_server("qc", data)
-        rnaseq_pca_server("pca", data)
-        rnaseq_de_server("de", data)
-        rnaseq_pathway_server("pathway", data)
-        rnaseq_browser_server("browser", data)
+
+        # LAZY LOADING: Only load data when this module is accessed
+        data <- reactiveVal(NULL)
+        is_loaded <- reactiveVal(FALSE)
+
+        # Load data on first access (triggered by any sub-module)
+        load_data <- reactive({
+            if (!is_loaded() && !is.null(data_dir)) {
+                message("Loading RNA-seq data from: ", data_dir)
+                loaded <- load_rnaseq_data(data_dir)
+                data(loaded)
+                is_loaded(TRUE)
+            }
+            data()
+        })
+
+        # Call sub-modules with lazy-loaded data
+        rnaseq_qc_server("qc", load_data)
+        rnaseq_pca_server("pca", load_data)
+        rnaseq_de_server("de", load_data)
+        rnaseq_pathway_server("pathway", load_data)
+        rnaseq_browser_server("browser", load_data)
     })
 }
 
@@ -94,12 +111,13 @@ rnaseq_qc_ui <- function(id) {
     )
 }
 
-rnaseq_qc_server <- function(id, data) {
+rnaseq_qc_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
 
         # Library sizes bar plot
         output$library_sizes <- renderPlotly({
-            req(data$qc_metrics)
+            data <- data_reactive()
+            req(data, data$qc_metrics)
 
             qc <- data$qc_metrics
             count_col <- intersect(c("total_counts", "total_normalized", "library_size"),
@@ -121,7 +139,8 @@ rnaseq_qc_server <- function(id, data) {
 
         # Detected genes bar plot
         output$detected_genes <- renderPlotly({
-            req(data$qc_metrics)
+            data <- data_reactive()
+            req(data, data$qc_metrics)
 
             qc <- data$qc_metrics
             gene_col <- intersect(c("detected_genes", "n_genes", "genes_detected"),
@@ -143,7 +162,8 @@ rnaseq_qc_server <- function(id, data) {
 
         # Correlation heatmap
         output$correlation_heatmap <- renderPlotly({
-            req(data$sample_correlation)
+            data <- data_reactive()
+            req(data, data$sample_correlation)
 
             cor_mat <- data$sample_correlation
 
@@ -165,7 +185,8 @@ rnaseq_qc_server <- function(id, data) {
 
         # QC metrics table
         output$qc_table <- renderDT({
-            req(data$qc_metrics)
+            data <- data_reactive()
+            req(data, data$qc_metrics)
 
             datatable(
                 data$qc_metrics,
@@ -214,13 +235,14 @@ rnaseq_pca_ui <- function(id) {
     )
 }
 
-rnaseq_pca_server <- function(id, data) {
+rnaseq_pca_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
-        # Update color choices
+        # Update color choices when data loads
         observe({
-            req(data$pca_results)
+            data <- data_reactive()
+            req(data, data$pca_results)
             pca <- data$pca_results
 
             # Get non-PC columns
@@ -239,13 +261,15 @@ rnaseq_pca_server <- function(id, data) {
 
         # Extract variance explained
         var_explained <- reactive({
-            req(data$pca_results)
+            data <- data_reactive()
+            req(data, data$pca_results)
             extract_variance_explained(data$pca_results)
         })
 
         # PCA plot
         output$pca_plot <- renderPlotly({
-            req(data$pca_results, input$pc_x, input$pc_y)
+            data <- data_reactive()
+            req(data, data$pca_results, input$pc_x, input$pc_y)
 
             pca_df <- data$pca_results
 
@@ -329,13 +353,14 @@ rnaseq_de_ui <- function(id) {
     )
 }
 
-rnaseq_de_server <- function(id, data) {
+rnaseq_de_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         # Update contrast choices
         observe({
-            req(data$de_results)
+            data <- data_reactive()
+            req(data, data$de_results)
             contrasts <- get_contrasts(data$de_results)
             updateSelectInput(session, "contrast", choices = contrasts,
                               selected = contrasts[1])
@@ -343,7 +368,8 @@ rnaseq_de_server <- function(id, data) {
 
         # Get current DE results
         current_de <- reactive({
-            req(input$contrast, data$de_results)
+            data <- data_reactive()
+            req(input$contrast, data, data$de_results)
             get_de_for_contrast(data$de_results, input$contrast)
         })
 
@@ -496,13 +522,14 @@ rnaseq_pathway_ui <- function(id) {
     )
 }
 
-rnaseq_pathway_server <- function(id, data) {
+rnaseq_pathway_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         # Update choices
         observe({
-            req(data$pathway_results)
+            data <- data_reactive()
+            req(data, data$pathway_results)
 
             # Get available pathway sources
             sources <- names(data$pathway_results)
@@ -517,7 +544,8 @@ rnaseq_pathway_server <- function(id, data) {
 
         # Current pathway data
         current_pathways <- reactive({
-            req(input$pathway_source, data$pathway_results)
+            data <- data_reactive()
+            req(input$pathway_source, data, data$pathway_results)
 
             pathways <- data$pathway_results[[input$pathway_source]]
 
@@ -606,13 +634,14 @@ rnaseq_browser_ui <- function(id) {
     )
 }
 
-rnaseq_browser_server <- function(id, data) {
+rnaseq_browser_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         # Update gene choices
         observe({
-            req(data$normalized_counts)
+            data <- data_reactive()
+            req(data, data$normalized_counts)
 
             # Get gene IDs from row names or first column
             counts <- data$normalized_counts
@@ -640,7 +669,8 @@ rnaseq_browser_server <- function(id, data) {
 
         # Update group choices
         observe({
-            if (!is.null(data$metadata)) {
+            data <- data_reactive()
+            if (!is.null(data) && !is.null(data$metadata)) {
                 cols <- get_metadata_columns(data$metadata)
                 updateSelectInput(session, "group_var", choices = cols,
                                   selected = cols[1])
@@ -655,7 +685,8 @@ rnaseq_browser_server <- function(id, data) {
 
         # Expression plot
         output$expression_plot <- renderPlotly({
-            req(input$gene_select, data$normalized_counts)
+            data <- data_reactive()
+            req(input$gene_select, data, data$normalized_counts)
 
             counts <- data$normalized_counts
             gene <- input$gene_select

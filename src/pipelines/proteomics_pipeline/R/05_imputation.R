@@ -129,14 +129,35 @@ analyze_mnar <- function(mat) {
   # Calculate missingness per feature
   pct_missing <- rowMeans(is.na(mat))
 
+  # Check if there are any missing values
+  if (sum(is.na(mat)) == 0) {
+    log_message("No missing values detected - skipping MNAR analysis")
+    return(list(
+      correlation = NA,
+      pattern = "No missing values"
+    ))
+  }
+
   # Correlation between mean intensity and missingness
   # Negative correlation suggests MNAR (low abundance = more missing)
   valid_idx <- is.finite(mean_intensity) & is.finite(pct_missing)
+
+  # Need variance in both variables for correlation
+  if (sum(valid_idx) < 3 || sd(pct_missing[valid_idx]) == 0) {
+    log_message("Insufficient variation for MNAR analysis")
+    return(list(
+      correlation = NA,
+      pattern = "Insufficient data"
+    ))
+  }
+
   correlation <- cor(mean_intensity[valid_idx], pct_missing[valid_idx],
                      method = "spearman")
 
   # Determine pattern
-  if (correlation < -0.3) {
+  if (is.na(correlation)) {
+    pattern <- "Could not determine"
+  } else if (correlation < -0.3) {
     pattern <- "MNAR (left-censored)"
   } else if (correlation > 0.3) {
     pattern <- "Unusual (high abundance = more missing)"
@@ -144,7 +165,8 @@ analyze_mnar <- function(mat) {
     pattern <- "MCAR-like (random)"
   }
 
-  log_message("Missingness pattern: ", pattern, " (rho = ", round(correlation, 3), ")")
+  log_message("Missingness pattern: ", pattern, " (rho = ",
+              ifelse(is.na(correlation), "NA", round(correlation, 3)), ")")
 
   list(
     correlation = correlation,

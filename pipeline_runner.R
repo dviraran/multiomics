@@ -37,6 +37,11 @@ find_multiomics_root <- function() {
   for (candidate in candidates) {
     if (is.null(candidate) || candidate == "") next
     candidate <- normalizePath(candidate, mustWork = FALSE)
+    # Check for new structure (src/pipelines/)
+    if (dir.exists(file.path(candidate, "src", "pipelines", "rnaseq_pipeline"))) {
+      return(candidate)
+    }
+    # Fallback for old structure
     if (dir.exists(file.path(candidate, "rnaseq_pipeline"))) {
       return(candidate)
     }
@@ -68,7 +73,13 @@ run_omics_pipeline <- function(pipeline, config_file = NULL, clean = FALSE) {
   }
 
   root <- find_multiomics_root()
-  pipeline_dir <- file.path(root, paste0(pipeline, "_pipeline"))
+
+  # Check for new structure first (src/pipelines/)
+  pipeline_dir <- file.path(root, "src", "pipelines", paste0(pipeline, "_pipeline"))
+  if (!dir.exists(pipeline_dir)) {
+    # Fallback to old structure
+    pipeline_dir <- file.path(root, paste0(pipeline, "_pipeline"))
+  }
 
   if (!dir.exists(pipeline_dir)) {
     stop("Pipeline directory not found: ", pipeline_dir)

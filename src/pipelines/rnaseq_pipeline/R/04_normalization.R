@@ -73,14 +73,18 @@ get_normalized_counts <- function(dds) {
 #' @param blind Whether to blind transformation to experimental design
 #' @return Matrix of VST-transformed values
 get_vst_counts <- function(dds, blind = TRUE) {
+  n_genes <- nrow(dds)
+  n_samples <- ncol(dds)
 
   # Use VST for datasets with many samples, rlog for small datasets
-  if (ncol(dds) < 30) {
+  if (n_samples < 30) {
     message("Using rlog transformation (n < 30 samples)")
     vst <- DESeq2::rlog(dds, blind = blind)
   } else {
     message("Using VST transformation (n >= 30 samples)")
-    vst <- DESeq2::vst(dds, blind = blind)
+    # Adjust nsub for small gene sets (default is 1000)
+    nsub <- min(1000, n_genes)
+    vst <- DESeq2::vst(dds, blind = blind, nsub = nsub)
   }
 
   vst_counts <- SummarizedExperiment::assay(vst)

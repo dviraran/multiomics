@@ -2,6 +2,50 @@
 # Data Loading Functions for Multi-Omics Viewer
 # =============================================================================
 # Functions to load CSV files from each pipeline's output directory
+# LAZY LOADING: Data is loaded on-demand when tabs are accessed
+
+# =============================================================================
+# Lazy Data Cache (session-scoped)
+# =============================================================================
+# This creates a cached loader that only loads data once per session
+
+#' Create a lazy data loader with caching
+#' @param load_fn Function to call when data is first requested
+#' @return A function that returns cached data or loads it on first call
+create_lazy_loader <- function(load_fn) {
+    cache <- NULL
+    loaded <- FALSE
+
+    function() {
+        if (!loaded) {
+            cache <<- load_fn()
+            loaded <<- TRUE
+        }
+        cache
+    }
+}
+
+#' Create reactive lazy loader for Shiny
+#' @param data_dir Directory path to load from
+#' @param loader_fn Loading function (e.g., load_rnaseq_data)
+#' @return Reactive expression that loads data on first access
+create_reactive_loader <- function(data_dir, loader_fn) {
+    data_cache <- reactiveVal(NULL)
+    is_loaded <- reactiveVal(FALSE)
+
+    reactive({
+        if (!is_loaded()) {
+            message(paste("Lazy loading data from:", data_dir))
+            data_cache(loader_fn(data_dir))
+            is_loaded(TRUE)
+        }
+        data_cache()
+    })
+}
+
+# =============================================================================
+# Basic File Operations
+# =============================================================================
 
 #' Safe CSV reader with error handling
 #' @param file_path Path to CSV file

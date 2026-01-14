@@ -145,12 +145,17 @@ run_ppi_network_analysis <- function(da_results, normalized_data, config) {
   # Active subnetwork identification
   active_subnet <- NULL
   if (ppi_config$active_subnetwork %||% TRUE) {
-    active_subnet <- identify_active_subnetworks(
-      graph = ppi_network$graph,
-      da_results = da_results,
-      config = config,
-      output_dir = output_dir
-    )
+    active_subnet <- tryCatch({
+      identify_active_subnetworks(
+        graph = ppi_network$graph,
+        da_results = da_results,
+        config = config,
+        output_dir = output_dir
+      )
+    }, error = function(e) {
+      log_message("  Active subnetwork analysis failed: ", e$message)
+      NULL
+    })
   }
 
   # Protein complex analysis (CORUM)
@@ -606,8 +611,14 @@ identify_active_subnetworks <- function(graph, da_results, config, output_dir) {
   # Simple approach: identify densely connected high-score regions
 
   # Threshold for "active" nodes
-  score_threshold <- quantile(abs(scores), 0.75, na.rm = TRUE)
-  active_nodes <- which(abs(scores) >= score_threshold)
+  abs_scores <- abs(scores)
+  abs_scores[is.na(abs_scores)] <- 0
+  score_threshold <- quantile(abs_scores, 0.75, na.rm = TRUE)
+  if (is.na(score_threshold) || score_threshold == 0) {
+    log_message("  Cannot determine score threshold for subnetwork analysis")
+    return(NULL)
+  }
+  active_nodes <- which(abs_scores >= score_threshold)
 
   if (length(active_nodes) < 3) {
     log_message("  Too few active nodes for subnetwork analysis")

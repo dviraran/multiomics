@@ -1,6 +1,7 @@
 # =============================================================================
-# Proteomics Main Module
+# Proteomics Main Module (LAZY LOADING)
 # =============================================================================
+# Data is loaded only when this tab is first accessed
 
 proteomics_main_ui <- function(id) {
     ns <- NS(id)
@@ -18,7 +19,7 @@ proteomics_main_ui <- function(id) {
         # PCA Tab
         nav_panel(
             title = "PCA",
-            icon = icon("chart-scatter"),
+            icon = icon("circle-dot"),
             proteomics_pca_ui(ns("pca"))
         ),
 
@@ -45,13 +46,28 @@ proteomics_main_ui <- function(id) {
     )
 }
 
-proteomics_main_server <- function(id, data) {
+proteomics_main_server <- function(id, data_dir) {
     moduleServer(id, function(input, output, session) {
-        proteomics_qc_server("qc", data)
-        proteomics_pca_server("pca", data)
-        proteomics_da_server("da", data)
-        proteomics_ppi_server("ppi", data)
-        proteomics_browser_server("browser", data)
+
+        # LAZY LOADING: Only load data when this module is accessed
+        data <- reactiveVal(NULL)
+        is_loaded <- reactiveVal(FALSE)
+
+        load_data <- reactive({
+            if (!is_loaded() && !is.null(data_dir)) {
+                message("Loading Proteomics data from: ", data_dir)
+                loaded <- load_proteomics_data(data_dir)
+                data(loaded)
+                is_loaded(TRUE)
+            }
+            data()
+        })
+
+        proteomics_qc_server("qc", load_data)
+        proteomics_pca_server("pca", load_data)
+        proteomics_da_server("da", load_data)
+        proteomics_ppi_server("ppi", load_data)
+        proteomics_browser_server("browser", load_data)
     })
 }
 
@@ -89,12 +105,13 @@ proteomics_qc_ui <- function(id) {
     )
 }
 
-proteomics_qc_server <- function(id, data) {
+proteomics_qc_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
 
         # Missing values heatmap
         output$missing_heatmap <- renderPlotly({
-            req(data$normalized_matrix)
+            data <- data_reactive()
+            req(data, data$normalized_matrix)
 
             mat <- data$normalized_matrix
 
@@ -126,7 +143,8 @@ proteomics_qc_server <- function(id, data) {
 
         # Correlation heatmap
         output$correlation_heatmap <- renderPlotly({
-            req(data$normalized_matrix)
+            data <- data_reactive()
+            req(data, data$normalized_matrix)
 
             mat <- data$normalized_matrix
 
@@ -150,7 +168,8 @@ proteomics_qc_server <- function(id, data) {
 
         # QC summary
         output$qc_summary <- renderUI({
-            req(data$normalized_matrix)
+            data <- data_reactive()
+            req(data, data$normalized_matrix)
 
             mat <- data$normalized_matrix
             if (!is.matrix(mat)) {
@@ -197,12 +216,15 @@ proteomics_pca_ui <- function(id) {
     )
 }
 
-proteomics_pca_server <- function(id, data) {
+proteomics_pca_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         # Compute PCA from normalized matrix if not provided
         pca_data <- reactive({
+            data <- data_reactive()
+            req(data)
+
             # Check if PCA results exist in QC data
             if (!is.null(data$qc) && !is.null(data$qc$pca_coordinates)) {
                 return(data$qc$pca_coordinates)
@@ -244,10 +266,11 @@ proteomics_pca_server <- function(id, data) {
         # Update color choices
         observe({
             req(pca_data())
+            data <- data_reactive()
 
             cols <- setdiff(colnames(pca_data()), c(paste0("PC", 1:20), "sample"))
 
-            if (!is.null(data$metadata)) {
+            if (!is.null(data) && !is.null(data$metadata)) {
                 meta_cols <- get_metadata_columns(data$metadata)
                 cols <- unique(c(cols, meta_cols))
             }
@@ -258,6 +281,7 @@ proteomics_pca_server <- function(id, data) {
 
         # PCA plot
         output$pca_plot <- renderPlotly({
+            data <- data_reactive()
             req(pca_data(), input$pc_x, input$pc_y)
 
             pca_df <- pca_data()
@@ -266,7 +290,7 @@ proteomics_pca_server <- function(id, data) {
             # Merge with metadata
             if (!is.null(input$color_by) &&
                 !input$color_by %in% colnames(pca_df) &&
-                !is.null(data$metadata)) {
+                !is.null(data) && !is.null(data$metadata)) {
 
                 meta_sample_col <- intersect(c("sample", "sample_id"), colnames(data$metadata))[1]
                 if (!is.na(meta_sample_col)) {
@@ -331,19 +355,21 @@ proteomics_da_ui <- function(id) {
     )
 }
 
-proteomics_da_server <- function(id, data) {
+proteomics_da_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         observe({
-            req(data$de_results)
+            data <- data_reactive()
+            req(data, data$de_results)
             contrasts <- get_contrasts(data$de_results)
             updateSelectInput(session, "contrast", choices = contrasts,
                               selected = contrasts[1])
         })
 
         current_da <- reactive({
-            req(input$contrast, data$de_results)
+            data <- data_reactive()
+            req(input$contrast, data, data$de_results)
             get_de_for_contrast(data$de_results, input$contrast)
         })
 
@@ -457,13 +483,14 @@ proteomics_ppi_ui <- function(id) {
     )
 }
 
-proteomics_ppi_server <- function(id, data) {
+proteomics_ppi_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         # Network stats
         output$network_stats <- renderUI({
-            if (is.null(data$ppi_edges)) {
+            data <- data_reactive()
+            if (is.null(data) || is.null(data$ppi_edges)) {
                 return(tags$p("No PPI network data available"))
             }
 
@@ -479,7 +506,8 @@ proteomics_ppi_server <- function(id, data) {
 
         # Network visualization
         output$network_plot <- renderVisNetwork({
-            req(data$ppi_edges)
+            data <- data_reactive()
+            req(data, data$ppi_edges)
 
             edges <- data$ppi_edges
 
@@ -560,7 +588,8 @@ proteomics_ppi_server <- function(id, data) {
 
         # Hub proteins table
         output$hub_table <- renderDT({
-            req(data$hub_proteins)
+            data <- data_reactive()
+            req(data, data$hub_proteins)
 
             datatable(
                 head(data$hub_proteins, 20),
@@ -595,12 +624,13 @@ proteomics_browser_ui <- function(id) {
     )
 }
 
-proteomics_browser_server <- function(id, data) {
+proteomics_browser_server <- function(id, data_reactive) {
     moduleServer(id, function(input, output, session) {
         ns <- session$ns
 
         observe({
-            req(data$normalized_matrix)
+            data <- data_reactive()
+            req(data, data$normalized_matrix)
 
             mat <- data$normalized_matrix
             proteins <- if ("feature_id" %in% colnames(mat)) mat$feature_id
@@ -620,7 +650,8 @@ proteomics_browser_server <- function(id, data) {
         })
 
         observe({
-            if (!is.null(data$metadata)) {
+            data <- data_reactive()
+            if (!is.null(data) && !is.null(data$metadata)) {
                 cols <- get_metadata_columns(data$metadata)
                 updateSelectInput(session, "group_var", choices = cols,
                                   selected = if(length(cols) > 0) cols[1] else NULL)
@@ -633,7 +664,8 @@ proteomics_browser_server <- function(id, data) {
         })
 
         output$abundance_plot <- renderPlotly({
-            req(input$protein_select, data$normalized_matrix)
+            data <- data_reactive()
+            req(input$protein_select, data, data$normalized_matrix)
 
             expr_df <- prepare_expression_data(
                 data$normalized_matrix,
