@@ -241,6 +241,65 @@ M150T90,150.0878,90,M+H,Phenylalanine
 M200T120,200.1182,120,M+Na,Unknown
 ```
 
+## MetaboAnalyst Integration (optional) 🔬
+
+If you have `MetaboAnalystR` installed and would like to use its preprocessing and analysis routines, enable the integration in `config.yml`:
+
+```yaml
+metaboanalyst:
+  use_metaboanalyst: true
+  replace_min: true
+  replace_min_fraction: 0.5
+  normalization_method: LogNorm
+  plot_norm_summary: true
+  plot_sample_norm_summary: false
+  run_core: false
+```
+
+The pipeline provides the following wrappers in `R/10_metaboanalyst_integration.R`:
+
+- `init_mset_from_table(combined_file, config)`: calls `Read.TextData(..., "rowu", ...)` and `SanityCheckData()` to initialize an mSet
+- `metabo_preprocess(mSet, config)`: calls `ReplaceMin`, `PreparePrenormData`, `Normalization`, and optionally `PlotNormSummary`/`PlotSampleNormSummary`
+- `run_metabo_core_analyses(mSet, config)`: wraps `Volcano.Anal`, `PLSR.Anal`, and `RF.Anal` when available
+- `extract_normalized_from_mset(mSet, config)`: pulls normalized matrix from the mSet
+- `export_normalized_samples_tsv(normalized_data, config)`: exports a samples×features TSV to `outputs/tables/`
+
+These wrappers gracefully fall back to the pipeline's native implementations if `MetaboAnalystR` is not installed.
+
+## Random Forest 🔁
+
+Random forest classification and feature importance are available via `ranger` in `R/11_random_forest.R`.
+Enable and configure in `config.yml`:
+
+```yaml
+rf:
+  run_rf: true
+  package: ranger
+  n_trees: 500
+  importance: permutation
+  top_n: 20
+  seed: 1234
+```
+
+Outputs:
+- `outputs/tables/rf_feature_importance.csv`
+- `outputs/plots/rf_feature_importance.png`
+
+If `ranger` is not installed, the RF step is skipped with a warning.
+
+## Export: samples × features TSV
+
+You can optionally export the normalized matrix transposed (samples as rows) as a TSV using `config.yml`:
+
+```yaml
+export:
+  samples_by_features_tsv: true
+  normalized_samples_tsv_name: "normalized_matrix_samples_x_features.tsv"
+```
+
+The file is written to `outputs/tables/`.
+
+
 ### annotations.csv
 
 Maps features to metabolite identifiers and classes:

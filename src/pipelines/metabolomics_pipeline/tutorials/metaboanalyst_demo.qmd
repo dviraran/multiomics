@@ -1,0 +1,47 @@
+---
+title: "MetaboAnalyst Demo"
+format: html
+---
+
+This short demo shows how to run the optional MetaboAnalystR-backed preprocessing and run the pipeline's Random Forest wrapper.
+
+```{r}
+# Load helpers from the pipeline (paths relative to this tutorial)
+source("../R/00_utils.R")
+source("../R/10_metaboanalyst_integration.R")
+source("../R/11_random_forest.R")
+
+cfg <- load_config("../config.yml")
+
+# Enable MetaboAnalyst usage for demo (turn back off in production)
+cfg$metaboanalyst$use_metaboanalyst <- FALSE # Set TRUE if MetaboAnalystR installed and you want to use it
+
+# Example: initialize (will warn or return NULL if MetaboAnalystR not installed)
+mset <- init_mset_from_table(cfg$input$feature_matrix, cfg)
+
+# If mset available, run MetaboAnalyst preprocessing
+if (!is.null(mset) && cfg$metaboanalyst$use_metaboanalyst) {
+  mset <- metabo_preprocess(mset, cfg)
+  core <- run_metabo_core_analyses(mset, cfg)
+  print(names(core))
+} else {
+  message("MetaboAnalystR not available or disabled. Falling back to pipeline normalization and RF.")
+}
+
+# Determine pipeline root and locate normalized matrix
+pipeline_root <- normalizePath("..")
+norm_file <- file.path(pipeline_root, cfg$output$output_dir, "tables", "normalized_matrix.csv")
+if (!file.exists(norm_file)) {
+  message("Normalized matrix not found at ", norm_file, ". Run the pipeline first (tar_make). Skipping RF demo.")
+} else {
+  norm <- readr::read_csv(norm_file)
+  mat <- as.matrix(dplyr::select(norm, -feature_id))
+  rownames(mat) <- norm$feature_id
+
+  metadata <- readr::read_csv(file.path(pipeline_root, cfg$input$metadata))
+  rf <- run_random_forest(mat, metadata, cfg)
+
+  if (!is.null(rf)) print(head(rf$importance))
+}
+
+```

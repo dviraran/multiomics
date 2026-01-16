@@ -1,0 +1,35 @@
+---
+title: "Metabolomics Pipeline Vignette"
+format: html
+---
+
+This vignette demonstrates how to configure and run the metabolomics pipeline, and how to enable the optional MetaboAnalystR integration.
+
+## Quick demo
+
+```{r}
+# Load pipeline helpers
+source("R/00_utils.R")
+
+cfg <- load_config("config.yml")
+
+# Run full pipeline (reports disabled for speed)
+Sys.setenv(DISABLE_REPORTS = 1)
+setwd(".")
+# Ensure output dirs exist
+create_output_dirs(cfg)
+
+# Run targets (from vignette context you may want to call a smaller subset)
+# targets::tar_make(script = "_targets.R")
+
+```
+
+## MetaboAnalyst integration
+
+Set `metaboanalyst$use_metaboanalyst: true` in `config.yml` and ensure `MetaboAnalystR` is installed (on/off is controlled by env var `INSTALL_METABOANALYST`).
+
+```{r}
+# Example: initialize mSet
+# mset <- init_mset_from_table(cfg$input$feature_matrix, cfg)
+# mset <- metabo_preprocess(mset, cfg)
+```

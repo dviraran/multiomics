@@ -95,8 +95,19 @@ build_design_matrix <- function(metadata, config) {
     if (!var %in% colnames(metadata)) {
       stop("Variable '", var, "' not found in metadata")
     }
-    if (!is.factor(metadata[[var]])) {
-      metadata[[var]] <- as.factor(metadata[[var]])
+    # Ensure factor and drop unused levels (important after subsetting samples)
+    metadata[[var]] <- droplevels(as.factor(metadata[[var]]))
+
+    # Check that we have at least two levels for the design variable
+    if (length(levels(metadata[[var]])) < 2) {
+      stop("Design variable '", var, "' has fewer than 2 levels after subsetting samples; cannot build design matrix")
+    }
+
+    # Check minimum samples per group
+    min_samples <- config$differential$min_samples_per_group %||% 2
+    grp_counts <- table(metadata[[var]])
+    if (any(grp_counts < min_samples)) {
+      warning(sprintf("One or more levels in '%s' have fewer than %d samples; results may be unstable", var, min_samples))
     }
   }
 
@@ -142,14 +153,25 @@ build_contrast_matrix <- function(design, metadata, config) {
     numerator <- trimws(parts[1])
     denominator <- trimws(parts[2])
 
-    num_coef <- grep(paste0(condition_col, numerator, "$"), coef_names, value = TRUE)
-    den_coef <- grep(paste0(condition_col, denominator, "$"), coef_names, value = TRUE)
+    # Match coefficients by level name (robust to column naming schemes)
+    num_coef <- grep(numerator, coef_names, value = TRUE)
+    den_coef <- grep(denominator, coef_names, value = TRUE)
+
+    if (length(num_coef) == 0 || length(den_coef) == 0) {
+      warning("Could not find coefficient names for contrast: ", contrast_str, 
+              "; available coefficients: ", paste(coef_names, collapse = ", "))
+      next
+    }
+
+    # Prefer exact single matches if available, otherwise use first match
+    num_idx <- if (length(num_coef) == 1) num_coef else num_coef[1]
+    den_idx <- if (length(den_coef) == 1) den_coef else den_coef[1]
 
     contrast_vec <- rep(0, length(coef_names))
     names(contrast_vec) <- coef_names
 
-    if (length(num_coef) == 1) contrast_vec[num_coef] <- 1
-    if (length(den_coef) == 1) contrast_vec[den_coef] <- -1
+    contrast_vec[num_idx] <- 1
+    contrast_vec[den_idx] <- -1
 
     if (numerator == config$design$reference_level && length(den_coef) == 1) {
       contrast_vec[den_coef] <- -1
@@ -179,21 +201,93 @@ run_limma <- function(mat, design, contrasts, config) {
   log_message("Running limma analysis...")
 
   fit <- limma::lmFit(mat, design)
-  fit_contrasts <- limma::contrasts.fit(fit, contrasts)
-  fit_eb <- limma::eBayes(fit_contrasts)
 
   results <- list()
+
+  # If contrasts is NULL or has no columns, operate directly on design coefficients
+  if (is.null(contrasts) || ncol(contrasts) == 0) {
+    log_message("No contrasts provided; using design coefficients instead")
+    fit_eb <- limma::eBayes(fit)
+
+    coef_names <- colnames(design)
+    for (i in seq_along(coef_names)) {
+      coef_idx <- i
+      coef_name <- coef_names[i]
+      log_message("Processing coefficient: ", coef_name)
+
+      tt <- tryCatch({
+        limma::topTable(
+          fit_eb,
+          coef = coef_idx,
+          number = Inf,
+          adjust.method = "BH",
+          sort.by = "P"
+        )
+      }, error = function(e) {
+        warning("limma::topTable failed for coefficient '", coef_name, "': ", e$message)
+        return(NULL)
+      })
+
+      if (is.null(tt) || nrow(tt) == 0) {
+        warning("No features returned by limma for coefficient: ", coef_name)
+        next
+      }
+
+      tt$feature_id <- rownames(tt)
+      colnames(tt)[colnames(tt) == "logFC"] <- "log2FC"
+      colnames(tt)[colnames(tt) == "AveExpr"] <- "avg_intensity"
+
+      adj_pval <- config$differential$adj_pvalue_threshold %||% 0.05
+      log2fc <- config$differential$log2fc_threshold %||% 1
+
+      tt$significant <- tt$adj.P.Val < adj_pval & abs(tt$log2FC) > log2fc
+      tt$direction <- ifelse(tt$log2FC > 0, "up", "down")
+
+      keep_cols <- intersect(c("feature_id", "log2FC", "avg_intensity", "t", "P.Value", "adj.P.Val", "B", "significant", "direction"), colnames(tt))
+      tt <- tt[, keep_cols, drop = FALSE]
+
+      results[[coef_name]] <- list(
+        table = tt,
+        n_sig = sum(if ("significant" %in% colnames(tt)) tt$significant else rep(FALSE, nrow(tt))),
+        n_up = sum(if ("significant" %in% colnames(tt) & "direction" %in% colnames(tt)) tt$significant & tt$direction == "up" else 0),
+        n_down = sum(if ("significant" %in% colnames(tt) & "direction" %in% colnames(tt)) tt$significant & tt$direction == "down" else 0)
+      )
+
+      log_message("  Significant: ", results[[coef_name]]$n_sig)
+    }
+
+    return(results)
+  }
+
+  # Otherwise, use contrasts matrix
+  fit_contrasts <- limma::contrasts.fit(fit, contrasts)
+  fit_eb <- limma::eBayes(fit_contrasts)
 
   for (contrast_name in colnames(contrasts)) {
     log_message("Processing contrast: ", contrast_name)
 
-    tt <- limma::topTable(
-      fit_eb,
-      coef = contrast_name,
-      number = Inf,
-      adjust.method = "BH",
-      sort.by = "P"
-    )
+    coef_idx <- which(colnames(contrasts) == contrast_name)
+    if (length(coef_idx) == 0) {
+      warning("Contrast not found in contrast matrix: ", contrast_name)
+      next
+    }
+
+    tt <- tryCatch({
+      limma::topTable(
+        fit_eb,
+        coef = coef_idx,
+        number = Inf,
+        adjust.method = "BH",
+        sort.by = "P"
+      )
+    }, error = function(e) {
+      stop("limma::topTable failed for contrast '", contrast_name, "': ", e$message)
+    })
+
+    if (nrow(tt) == 0) {
+      warning("No features returned by limma for contrast: ", contrast_name)
+      next
+    }
 
     tt$feature_id <- rownames(tt)
     colnames(tt)[colnames(tt) == "logFC"] <- "log2FC"
@@ -205,14 +299,14 @@ run_limma <- function(mat, design, contrasts, config) {
     tt$significant <- tt$adj.P.Val < adj_pval & abs(tt$log2FC) > log2fc
     tt$direction <- ifelse(tt$log2FC > 0, "up", "down")
 
-    tt <- tt[, c("feature_id", "log2FC", "avg_intensity", "t", "P.Value", "adj.P.Val", "B",
-                 "significant", "direction")]
+    keep_cols <- intersect(c("feature_id", "log2FC", "avg_intensity", "t", "P.Value", "adj.P.Val", "B", "significant", "direction"), colnames(tt))
+    tt <- tt[, keep_cols, drop = FALSE]
 
     results[[contrast_name]] <- list(
       table = tt,
-      n_sig = sum(tt$significant),
-      n_up = sum(tt$significant & tt$direction == "up"),
-      n_down = sum(tt$significant & tt$direction == "down")
+      n_sig = sum(if ("significant" %in% colnames(tt)) tt$significant else rep(FALSE, nrow(tt))),
+      n_up = sum(if ("significant" %in% colnames(tt) & "direction" %in% colnames(tt)) tt$significant & tt$direction == "up" else 0),
+      n_down = sum(if ("significant" %in% colnames(tt) & "direction" %in% colnames(tt)) tt$significant & tt$direction == "down" else 0)
     )
 
     log_message("  Significant: ", results[[contrast_name]]$n_sig)

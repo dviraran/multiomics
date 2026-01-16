@@ -1,0 +1,20 @@
+{
+  "R": {
+    "Version": "4.3.0"
+  },
+  "Packages": {
+    "targets": {},
+    "tarchetypes": {},
+    "MetaboAnalystR": {},
+    "ggplot2": {},
+    "plotly": {},
+    "dplyr": {},
+    "readr": {},
+    "tibble": {},
+    "quarto": {},
+    "stringr": {},
+    "purrr": {},
+    "tidyr": {},
+    "renv": {}
+  }
+}

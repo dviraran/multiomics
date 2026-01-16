@@ -1,3 +1,28 @@
+## 00_utils.R - helper utilities for the pipeline
+# Minimal safe helpers so `_targets.R` can be validated.
+
+check_and_install_packages <- function(pkgs) {
+  missing <- pkgs[!pkgs %in% rownames(installed.packages())]
+  if (length(missing)) {
+    message("Installing missing packages: ", paste(missing, collapse = ", "))
+    install.packages(missing, repos = "https://cloud.r-project.org")
+  }
+  invisible(lapply(pkgs, require, character.only = TRUE))
+}
+
+load_config <- function(path = "config.yml") {
+  if (!file.exists(path)) stop("Config file not found: ", path)
+  yaml::read_yaml(path)
+}
+
+safe_write_rds <- function(object, path) {
+  tryCatch({
+    saveRDS(object, path)
+    return(normalizePath(path))
+  }, error = function(e) {
+    stop("Failed to write RDS to ", path, ": ", e$message)
+  })
+}
 # =============================================================================
 # Utility Functions for Metabolomics Pipeline
 # =============================================================================
@@ -151,6 +176,11 @@ create_output_dirs <- function(config) {
 #' @return Path to saved file
 save_table <- function(df, filename, config, subdir = "tables") {
   output_path <- file.path(config$output$output_dir, subdir, filename)
+
+  # Ensure target directory exists
+  out_dir <- dirname(output_path)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
   readr::write_csv(df, output_path)
   log_message("Saved: ", output_path)
   return(output_path)
@@ -171,6 +201,10 @@ save_plot <- function(plot, filename, config, width = NULL, height = NULL, subdi
   dpi <- config$output$plot_dpi %||% 300
 
   output_path <- file.path(config$output$output_dir, subdir, filename)
+
+  # Ensure target directory exists
+  out_dir <- dirname(output_path)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   ggplot2::ggsave(
     output_path,

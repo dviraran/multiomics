@@ -125,10 +125,19 @@ analyze_mnar_pattern <- function(mat) {
   pct_missing <- rowMeans(is.na(mat))
 
   valid_idx <- is.finite(mean_intensity) & is.finite(pct_missing)
-  correlation <- cor(mean_intensity[valid_idx], pct_missing[valid_idx], method = "spearman")
+  if (sum(valid_idx, na.rm = TRUE) < 2) {
+    correlation <- NA_real_
+  } else {
+    correlation <- tryCatch(
+      cor(mean_intensity[valid_idx], pct_missing[valid_idx], method = "spearman"),
+      error = function(e) NA_real_
+    )
+  }
 
-  # Determine pattern
-  if (correlation < -0.3) {
+  # Determine pattern with NA handling
+  if (is.na(correlation)) {
+    pattern <- "Unknown"
+  } else if (correlation < -0.3) {
     pattern <- "MNAR (left-censored)"
   } else if (correlation > 0.3) {
     pattern <- "Unusual pattern"
@@ -136,7 +145,7 @@ analyze_mnar_pattern <- function(mat) {
     pattern <- "MAR/MCAR (random)"
   }
 
-  log_message("Missingness pattern: ", pattern, " (rho = ", round(correlation, 3), ")")
+  log_message("Missingness pattern: ", pattern, " (rho = ", ifelse(is.na(correlation), "NA", round(correlation, 3)), ")")
 
   list(
     correlation = correlation,

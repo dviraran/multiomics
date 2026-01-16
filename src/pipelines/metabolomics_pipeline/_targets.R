@@ -1,6 +1,9 @@
 # =============================================================================
 # Metabolomics Analysis Pipeline - Main targets file
 # =============================================================================
+# =============================================================================
+# Metabolomics Analysis Pipeline - Main targets file
+# =============================================================================
 # A comprehensive, modular pipeline for LC-MS/GC-MS metabolomics analysis
 # Supports both untargeted and targeted workflows
 #
@@ -30,27 +33,12 @@ check_and_install_packages <- function(packages) {
       if (!requireNamespace("BiocManager", quietly = TRUE)) {
         install.packages("BiocManager")
       }
-
-      cran_missing <- setdiff(missing, bioc_packages)
-      bioc_missing <- intersect(missing, bioc_packages)
-
-      if (length(cran_missing) > 0) {
-        message("Installing CRAN packages: ", paste(cran_missing, collapse = ", "))
-        install.packages(cran_missing)
-      }
-
-      if (length(bioc_missing) > 0) {
-        message("Installing Bioconductor packages: ", paste(bioc_missing, collapse = ", "))
-        BiocManager::install(bioc_missing, ask = FALSE)
-      }
-
-      # Re-check
-      still_missing <- missing[!sapply(missing, requireNamespace, quietly = TRUE)]
-      if (length(still_missing) > 0) {
-        stop("Failed to install: ", paste(still_missing, collapse = ", "))
-      }
-      message("All packages installed successfully!")
-    } else {
+set.seed(1234)
+tar_option_set(
+  packages = c("MetaboAnalystR", "ggplot2", "plotly", "dplyr", "readr", "tibble", "stringr", "purrr", "tidyr", "yaml", "logger"),
+  resources = list(cores = 4),
+  format = "rds"
+)
       stop("Cannot proceed without required packages: ", paste(missing, collapse = ", "))
     }
   }
@@ -104,6 +92,8 @@ source("R/06_imputation.R")
 source("R/07_exploratory.R")
 source("R/08_differential.R")
 source("R/09_enrichment.R")
+source("R/10_metaboanalyst_integration.R")
+source("R/11_random_forest.R")
 
 # =============================================================================
 # Pipeline Definition
@@ -191,6 +181,44 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # Optional: MetaboAnalyst integration (initialization & core analyses)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    metabo_mset,
+    if (isTRUE(config$metaboanalyst$use_metaboanalyst)) {
+      init_mset_from_table(config$input$feature_matrix, config)
+    } else {
+      NULL
+    }
+  ),
+
+  tar_target(
+    metabo_analyses,
+    if (!is.null(metabo_mset)) metabo_preprocess(metabo_mset, config) else NULL
+  ),
+
+  tar_target(
+    metabo_core_results,
+    if (!is.null(metabo_mset) && isTRUE(config$metaboanalyst$run_core)) run_metabo_core_analyses(metabo_mset, config) else NULL
+  ),
+
+  # ---------------------------------------------------------------------------
+  # Random Forest
+  # ---------------------------------------------------------------------------
+  tar_target(
+    rf_results,
+    if (isTRUE(config$rf$run_rf)) run_random_forest(imputed_data$matrix, imputed_data$metadata, config) else NULL
+  ),
+
+  # ---------------------------------------------------------------------------
+  # Export normalized matrix as samples x features TSV
+  # ---------------------------------------------------------------------------
+  tar_target(
+    normalized_samples_tsv,
+    if (isTRUE(config$export$samples_by_features_tsv)) export_normalized_samples_tsv(normalized_data, config) else NULL
+  ),
+
+  # ---------------------------------------------------------------------------
   # Annotation Summary
   # ---------------------------------------------------------------------------
   tar_target(
@@ -219,14 +247,18 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
-  # Generate Report
+  # Generate Report (optional; disabled with DISABLE_REPORTS=1)
   # ---------------------------------------------------------------------------
-  tar_render(
-    report,
-    "reports/analysis_report.Rmd",
-    output_dir = "outputs/report",
-    params = list(
-      results = analysis_results
+  if (Sys.getenv("DISABLE_REPORTS", unset = "0") != "1") {
+    tar_render(
+      report,
+      "reports/analysis_report.Rmd",
+      output_dir = "outputs/report",
+      params = list(
+        results = analysis_results
+      )
     )
-  )
+  } else {
+    message("Report generation targets disabled (DISABLE_REPORTS=1)")
+  }
 )

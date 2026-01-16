@@ -1,10 +1,19 @@
+## config.yml - default parameters for metabolomics pipeline
+data_dir: "data"
+polarity: ["positive", "negative"]
+sample_groups:
+  - name: control
+    pattern: "ctrl"
+  - name: treatment
+    pattern: "treat"
+
 input:
-  feature_matrix: ../examples/data/nci60/metab_feature_matrix.csv
-  metadata: ../examples/data/nci60/metadata.csv
+  feature_matrix: "data/example_feature_matrix.csv"
+  metadata: "data/example_metadata.csv"
   data_type: untargeted
-  organism: Homo sapiens
-  sample_id_column: sample_id
-  feature_metadata: ../examples/data/nci60/metab_feature_metadata.csv
+  organism: "Homo sapiens"
+  sample_id_column: "sample_id"
+  feature_metadata: "data/example_feature_metadata.csv"
 optional_inputs:
   feature_metadata: ~
   annotation_table: ~
@@ -71,6 +80,28 @@ enrichment:
   min_set_size: 3
   max_set_size: 500
   run_class_enrichment: yes
+
+metaboanalyst:
+  use_metaboanalyst: false
+  replace_min: true
+  replace_min_fraction: 0.5
+  normalization_method: LogNorm
+  plot_norm_summary: true
+  plot_sample_norm_summary: false
+  run_core: false
+
+rf:
+  run_rf: true
+  package: ranger
+  n_trees: 500
+  importance: permutation # permutation or impurity
+  top_n: 20
+  seed: 1234
+
+export:
+  samples_by_features_tsv: true
+  normalized_samples_tsv_name: "normalized_matrix_samples_x_features.tsv"
+
 output:
   output_dir: outputs
   report_format: html
