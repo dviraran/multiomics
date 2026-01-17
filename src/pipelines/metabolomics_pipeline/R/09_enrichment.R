@@ -8,24 +8,24 @@
 
 # Source shared utilities if available
 .source_shared_utils <- function() {
-    possible_paths <- c(
-        file.path(dirname(dirname(getwd())), "shared", "R"),
-        file.path(dirname(getwd()), "shared", "R"),
-        file.path(getwd(), "..", "shared", "R"),
-        file.path(getwd(), "..", "..", "shared", "R")
-    )
+  possible_paths <- c(
+    file.path(dirname(dirname(getwd())), "shared", "R"),
+    file.path(dirname(getwd()), "shared", "R"),
+    file.path(getwd(), "..", "shared", "R"),
+    file.path(getwd(), "..", "..", "shared", "R")
+  )
 
-    for (shared_dir in possible_paths) {
-        if (dir.exists(shared_dir)) {
-            gmt_file <- file.path(shared_dir, "gmt_utils.R")
-            if (file.exists(gmt_file)) {
-                source(gmt_file)
-                message("Loaded shared GMT utilities")
-                return(TRUE)
-            }
-        }
+  for (shared_dir in possible_paths) {
+    if (dir.exists(shared_dir)) {
+      gmt_file <- file.path(shared_dir, "gmt_utils.R")
+      if (file.exists(gmt_file)) {
+        source(gmt_file)
+        message("Loaded shared GMT utilities")
+        return(TRUE)
+      }
     }
-    return(FALSE)
+  }
+  return(FALSE)
 }
 
 .source_shared_utils()
@@ -36,8 +36,9 @@
 #' @param imputed_data Imputed data
 #' @param ingested_data Ingested data (for annotations)
 #' @param config Configuration list
+#' @param mapped_pathways Optional mapped pathways
 #' @return Enrichment results
-run_enrichment_analysis <- function(de_results, imputed_data, ingested_data, config) {
+run_enrichment_analysis <- function(de_results, imputed_data, ingested_data, config, mapped_pathways = NULL) {
   log_message("=== Starting Enrichment Analysis ===")
 
   if (!config$enrichment$run_enrichment %||% TRUE) {
@@ -54,7 +55,8 @@ run_enrichment_analysis <- function(de_results, imputed_data, ingested_data, con
   all_results <- list()
 
   # Check what enrichment resources are available
-  has_pathway_mapping <- !is.null(annotations$pathway_mapping)
+  has_pathway_mapping <- !is.null(annotations$pathway_mapping) || !is.null(mapped_pathways)
+  pathway_mapping <- annotations$pathway_mapping %||% mapped_pathways
   has_annotation_table <- !is.null(annotations$annotation_table)
   has_gmt <- !is.null(annotations$metabolite_sets)
   has_class_annotation <- has_annotation_table && "class" %in% colnames(annotations$annotation_table)
@@ -73,7 +75,7 @@ run_enrichment_analysis <- function(de_results, imputed_data, ingested_data, con
 
     # Pathway enrichment (if pathway mapping available)
     if (has_pathway_mapping) {
-      pathway_results <- run_pathway_enrichment(de_table, annotations$pathway_mapping, config)
+      pathway_results <- run_pathway_enrichment(de_table, pathway_mapping, config)
       if (!is.null(pathway_results)) {
         contrast_results$pathway <- pathway_results
       }
@@ -179,8 +181,12 @@ run_pathway_enrichment <- function(de_table, pathway_mapping, config) {
     # Contingency table
     mat <- matrix(c(sig_in_pw, sig_not_in_pw, bg_in_pw, bg_not_in_pw), nrow = 2)
 
-    if (any(mat < 0)) return(NULL)
-    if (sig_in_pw == 0) return(NULL)
+    if (any(mat < 0)) {
+      return(NULL)
+    }
+    if (sig_in_pw == 0) {
+      return(NULL)
+    }
 
     test <- fisher.test(mat, alternative = "greater")
 
@@ -252,7 +258,9 @@ run_gmt_enrichment <- function(de_table, metabolite_sets, config) {
 
     mat <- matrix(c(sig_in_set, sig_not_in_set, bg_in_set, bg_not_in_set), nrow = 2)
 
-    if (any(mat < 0) || sig_in_set == 0) return(NULL)
+    if (any(mat < 0) || sig_in_set == 0) {
+      return(NULL)
+    }
 
     test <- fisher.test(mat, alternative = "greater")
 
@@ -322,7 +330,9 @@ run_class_enrichment <- function(de_table, annotation_table, config) {
 
     mat <- matrix(c(n_sig_in_class, n_sig_not_in_class, n_bg_in_class, n_bg_not_in_class), nrow = 2)
 
-    if (any(mat < 0) || n_sig_in_class == 0) return(NULL)
+    if (any(mat < 0) || n_sig_in_class == 0) {
+      return(NULL)
+    }
 
     test <- fisher.test(mat, alternative = "greater")
 
@@ -375,9 +385,13 @@ create_enrichment_plots <- function(enrichment_results, config) {
       if (nrow(top_pathways) > 0) {
         top_pathways$short_name <- substr(top_pathways$pathway_name, 1, 40)
 
-        plots$pathway <- ggplot2::ggplot(top_pathways,
-          ggplot2::aes(x = -log10(p.adjust), y = reorder(short_name, -log10(p.adjust)),
-                       size = n_overlap)) +
+        plots$pathway <- ggplot2::ggplot(
+          top_pathways,
+          ggplot2::aes(
+            x = -log10(p.adjust), y = reorder(short_name, -log10(p.adjust)),
+            size = n_overlap
+          )
+        ) +
           ggplot2::geom_point(color = "#0072B2") +
           ggplot2::labs(
             title = paste("Pathway Enrichment:", contrast_name),
@@ -389,7 +403,9 @@ create_enrichment_plots <- function(enrichment_results, config) {
           ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8))
 
         save_plot(plots$pathway, paste0("enrichment_pathway_", clean_name, ".png"),
-                  config, height = 8, subdir = "plots")
+          config,
+          height = 8, subdir = "plots"
+        )
       }
     }
 
@@ -398,13 +414,19 @@ create_enrichment_plots <- function(enrichment_results, config) {
       top_classes <- head(results$class[results$class$p.adjust < 0.2, ], 15)
 
       if (nrow(top_classes) > 0) {
-        plots$class <- ggplot2::ggplot(top_classes,
-          ggplot2::aes(x = -log10(p.adjust), y = reorder(class, -log10(p.adjust)),
-                       fill = pct_up > 50)) +
+        plots$class <- ggplot2::ggplot(
+          top_classes,
+          ggplot2::aes(
+            x = -log10(p.adjust), y = reorder(class, -log10(p.adjust)),
+            fill = pct_up > 50
+          )
+        ) +
           ggplot2::geom_bar(stat = "identity") +
-          ggplot2::scale_fill_manual(values = c("TRUE" = "#D55E00", "FALSE" = "#0072B2"),
-                                      labels = c("Mostly down", "Mostly up"),
-                                      name = "Direction") +
+          ggplot2::scale_fill_manual(
+            values = c("TRUE" = "#D55E00", "FALSE" = "#0072B2"),
+            labels = c("Mostly down", "Mostly up"),
+            name = "Direction"
+          ) +
           ggplot2::labs(
             title = paste("Chemical Class Enrichment:", contrast_name),
             x = "-Log10(Adjusted P-value)",
@@ -413,7 +435,9 @@ create_enrichment_plots <- function(enrichment_results, config) {
           ggplot2::theme_minimal()
 
         save_plot(plots$class, paste0("enrichment_class_", clean_name, ".png"),
-                  config, height = 8, subdir = "plots")
+          config,
+          height = 8, subdir = "plots"
+        )
       }
     }
 

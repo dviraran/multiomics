@@ -424,6 +424,27 @@ for (contrast_name in names(results$enrichment$results)) {
 }
 ```
 
+```{r qea_results, results='asis', eval=!is.null(results$qea) && !is.null(results$qea$pathway_results_df)}
+if (!is.null(results$qea) && !is.null(results$qea$pathway_results_df) && nrow(results$qea$pathway_results_df) > 0) {
+  cat("\n## Global Test QEA (MetaboAnalyst) {.tabset}\n\n")
+
+  qea_df <- results$qea$pathway_results_df
+  top_qea <- head(qea_df[order(qea_df$p.adj), ], 20)
+  display_cols <- intersect(c("pathway", "p.adj", "topology", "hits", "total"), colnames(top_qea))
+  if (length(display_cols) > 0) print(kable(top_qea[, display_cols]))
+
+  # Include saved plots if available
+  if (!is.null(results$qea$saved_paths$barplot_path) && file.exists(results$qea$saved_paths$barplot_path)) {
+    cat("\n### QEA Barplot\n\n")
+    knitr::include_graphics(results$qea$saved_paths$barplot_path)
+  }
+  if (!is.null(results$qea$saved_paths$dotplot_path) && file.exists(results$qea$saved_paths$dotplot_path)) {
+    cat("\n### QEA Dotplot\n\n")
+    knitr::include_graphics(results$qea$saved_paths$dotplot_path)
+  }
+}
+```
+
 # Annotation Summary
 
 ```{r annotation_summary}

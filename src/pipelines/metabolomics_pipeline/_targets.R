@@ -33,12 +33,12 @@ check_and_install_packages <- function(packages) {
       if (!requireNamespace("BiocManager", quietly = TRUE)) {
         install.packages("BiocManager")
       }
-set.seed(1234)
-tar_option_set(
-  packages = c("MetaboAnalystR", "ggplot2", "plotly", "dplyr", "readr", "tibble", "stringr", "purrr", "tidyr", "yaml", "logger"),
-  resources = list(cores = 4),
-  format = "rds"
-)
+      set.seed(1234)
+      tar_option_set(
+        packages = c("MetaboAnalystR", "ggplot2", "plotly", "dplyr", "readr", "tibble", "stringr", "purrr", "tidyr", "yaml", "logger"),
+        resources = list(cores = 4),
+        format = "rds"
+      )
       stop("Cannot proceed without required packages: ", paste(missing, collapse = ", "))
     }
   }
@@ -94,6 +94,7 @@ source("R/08_differential.R")
 source("R/09_enrichment.R")
 source("R/10_metaboanalyst_integration.R")
 source("R/11_random_forest.R")
+source("R/12_metabolite_mapping.R")
 
 # =============================================================================
 # Pipeline Definition
@@ -173,11 +174,19 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # Metabolite Mapping (Optional / Automatic)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    mapped_pathways,
+    map_metabolites_to_pathways(ingested_data, config)
+  ),
+
+  # ---------------------------------------------------------------------------
   # Enrichment Analysis
   # ---------------------------------------------------------------------------
   tar_target(
     enrichment_results,
-    run_enrichment_analysis(de_results, imputed_data, ingested_data, config)
+    run_enrichment_analysis(de_results, imputed_data, ingested_data, config, mapped_pathways)
   ),
 
   # ---------------------------------------------------------------------------
@@ -191,16 +200,126 @@ list(
       NULL
     }
   ),
-
   tar_target(
     metabo_analyses,
     if (!is.null(metabo_mset)) metabo_preprocess(metabo_mset, config) else NULL
   ),
-
   tar_target(
     metabo_core_results,
     if (!is.null(metabo_mset) && isTRUE(config$metaboanalyst$run_core)) run_metabo_core_analyses(metabo_mset, config) else NULL
   ),
+
+  # ---------------------------------------------------------------------------
+  # Global Test QEA (MetaboAnalystR) ✅
+  # Runs performGlobalTestQEA() when MetaboAnalyst integration is enabled and
+  # QEA is requested in the config (config$metaboanalyst$run_qea)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    qea_results,
+    if (!is.null(metabo_mset) && isTRUE(config$metaboanalyst$run_qea)) {
+      # Prefer normalized matrix from MetaboAnalyst mSet, fallback to imputed matrix
+      conc_mat <- extract_normalized_from_mset(metabo_mset, config)
+      if (is.null(conc_mat) && !is.null(imputed_data$matrix)) conc_mat <- imputed_data$matrix
+
+      if (is.null(conc_mat)) stop("No concentration matrix available for QEA (neither MetaboAnalyst mSet nor imputed_data$matrix present).")
+
+      conc_df <- as.data.frame(conc_mat)
+      conc_df <- tibble::rownames_to_column(conc_df, var = "Compound")
+
+      group_col <- config$design$condition_column
+      if (!group_col %in% colnames(ingested_data$metadata)) stop("Condition column '", group_col, "' not found in metadata for QEA.")
+      group_vec <- ingested_data$metadata[[group_col]]
+
+      # Save QEA outputs under pipeline output dir (outputs/qea)
+      performGlobalTestQEA(
+        conc_df,
+        group_vec,
+        norm_method = config$metaboanalyst$normalization_method %||% "SumNorm",
+        output_dir = config$output$output_dir,
+        save_outputs = TRUE
+      )
+    } else {
+      NULL
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
+  # QEA integration test (synthetic data)
+  # Ensures performGlobalTestQEA runs end-to-end and saves expected outputs
+  # ---------------------------------------------------------------------------
+  tar_target(
+    qea_integration_test,
+    if (isTRUE(config$metaboanalyst$run_qea)) {
+      set.seed(42)
+      n_met <- 100
+      n_samp <- 12
+      met_names <- paste0("M", sprintf("%03d", 1:n_met))
+      groups <- rep(c("Control", "Treatment"), each = n_samp / 2)
+      mat <- matrix(rnorm(n_met * n_samp, mean = 5, sd = 2), nrow = n_met)
+      # Inject missingness and small signal
+      mat[sample(length(mat), size = floor(0.15 * length(mat)))] <- NA
+      mat[1:10, groups == "Treatment"] <- mat[1:10, groups == "Treatment"] + 1.5
+      df <- data.frame(Compound = met_names, mat, stringsAsFactors = FALSE)
+      names(df)[-1] <- paste0("S", 1:n_samp)
+
+      res <- performGlobalTestQEA(df, groups,
+        norm_method = "SumNorm",
+        output_dir = file.path(config$output$output_dir, "qea", "test"),
+        save_outputs = TRUE
+      )
+
+      if (is.null(res$pathway_results_df)) stop("QEA integration test failed: no pathway results produced")
+      if (!"p.adj" %in% colnames(res$pathway_results_df)) stop("QEA integration test failed: p.adj missing from results")
+      if (length(res$saved_paths) == 0) stop("QEA integration test failed: no saved outputs detected")
+
+      TRUE
+    } else {
+      TRUE
+    }
+  ),
+
+  # ---------------------------------------------------------------------------
+  # Archive QEA outputs (zip) and optionally upload to GitHub release
+  # ---------------------------------------------------------------------------
+  tar_target(
+    qea_archive,
+    {
+      if (!isTRUE(config$metaboanalyst$run_qea)) {
+        return(NULL)
+      }
+
+      qea_dir <- file.path(config$output$output_dir, "qea")
+      if (!dir.exists(qea_dir)) {
+        warning("QEA output directory not found: ", qea_dir)
+        return(NULL)
+      }
+
+      files <- list.files(qea_dir, recursive = TRUE, full.names = TRUE)
+      if (length(files) == 0) {
+        warning("No files to archive in: ", qea_dir)
+        return(NULL)
+      }
+
+      out_zip <- file.path(config$output$output_dir, paste0("qea_outputs_", format(Sys.Date(), "%Y%m%d"), ".zip"))
+      # Create zip from within the qea directory so paths are relative
+      owd <- getwd()
+      on.exit(setwd(owd), add = TRUE)
+      setwd(qea_dir)
+      rel_files <- list.files(".", recursive = TRUE)
+
+      # Use utils::zip for portability
+      utils::zip(out_zip, files = rel_files)
+
+      if (!file.exists(out_zip)) stop("Failed to create qea archive: ", out_zip)
+
+      out_zip
+    },
+    format = "file"
+  ),
+
+  # tar_target(qea_upload, ...) removed by request to disable GitHub uploads
+  # If you later want safe upload functionality, re-add a carefully gated target that requires explicit config.enable_upload = TRUE
+
 
   # ---------------------------------------------------------------------------
   # Random Forest
@@ -242,6 +361,8 @@ list(
       exploratory = exploratory_results,
       differential = de_results,
       enrichment = enrichment_results,
+      mapped_pathways = mapped_pathways,
+      qea = qea_results,
       annotation_summary = annotation_summary
     )
   ),

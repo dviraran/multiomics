@@ -15,7 +15,7 @@ input:
   sample_id_column: "sample_id"
   feature_metadata: "data/example_feature_metadata.csv"
 optional_inputs:
-  feature_metadata: ~
+  feature_metadata: "data/example_feature_metadata.csv"
   annotation_table: ~
   pathway_mapping: ~
   internal_standards: ~
@@ -80,6 +80,10 @@ enrichment:
   min_set_size: 3
   max_set_size: 500
   run_class_enrichment: yes
+  mapping:
+    enabled: true
+    database: "kegg"
+    organism: "hsa"
 
 metaboanalyst:
   use_metaboanalyst: false
