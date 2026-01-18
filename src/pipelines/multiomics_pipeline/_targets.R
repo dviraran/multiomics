@@ -73,7 +73,7 @@ required_packages <- c(
 )
 
 # Check packages before loading targets
-check_and_install_packages(required_packages)
+# check_and_install_packages(required_packages)
 
 library(targets)
 library(tarchetypes)
@@ -91,10 +91,12 @@ source("R/08_snf.R")
 source("R/05b_foundational_correlations.R")
 source("R/05c_mechanistic_inference.R")
 source("R/09_concordance.R")
-source("R/09b_integration_consensus.R")  # NEW: Method comparison
-source("R/09c_stability_analysis.R")     # NEW: Bootstrap stability
+source("R/09b_integration_consensus.R") # NEW: Method comparison
+source("R/09c_stability_analysis.R") # NEW: Bootstrap stability
 source("R/10_enrichment.R")
+source("R/13_multigsea_plots.R")
 source("R/11_commentary.R")
+source("R/12_ms_helios.R")
 
 # Set target options
 tar_option_set(
@@ -104,13 +106,13 @@ tar_option_set(
     "DESeq2", "limma", "edgeR",
     "SummarizedExperiment", "MultiAssayExperiment", "S4Vectors",
     # Integration methods (optional)
-    "MOFA2", "mixOmics", "SNFtool",
+    # "MOFA2", "mixOmics", "SNFtool",
     # Enrichment (optional)
     "clusterProfiler", "org.Hs.eg.db", "fgsea",
     # Visualization
-    "ggplot2", "patchwork", "ComplexHeatmap", "circlize"
+    "ggplot2", "patchwork", "ComplexHeatmap", "circlize", "ggrepel"
   ),
-  error = "continue"  # Continue pipeline even if some targets fail
+  error = "continue" # Continue pipeline even if some targets fail
 )
 
 # =============================================================================
@@ -293,6 +295,13 @@ list(
     command = run_multiomics_enrichment(mae_data, integration_results, config)
   ),
 
+  # MultiGSEA Plots
+  tar_target(
+    name = multigsea_plots,
+    command = run_multigsea_plots(enrichment_results, config)
+  ),
+
+
   # ---------------------------------------------------------------------------
   # Integration Consensus Analysis (NEW)
   # ---------------------------------------------------------------------------
@@ -332,6 +341,14 @@ list(
         NULL
       }
     }
+  ),
+
+  # ---------------------------------------------------------------------------
+  # MS-Helios Visualization (NEW)
+  # ---------------------------------------------------------------------------
+  tar_target(
+    name = ms_helios_results,
+    command = run_ms_helios(mae_data, config)
   ),
 
   # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ load_config <- function(config_path = "config.yml") {
   }
   config <- yaml::read_yaml(config_path)
   config <- set_config_defaults(config)
+  log_message("DEBUG_LOAD: Loaded config from ", config_path)
   return(config)
 }
 
@@ -117,7 +118,9 @@ calc_cv <- function(x, na.rm = TRUE) {
 #' Fisher's method for combining p-values
 fisher_combine_pvalues <- function(pvals) {
   pvals <- pvals[!is.na(pvals) & pvals > 0 & pvals <= 1]
-  if (length(pvals) == 0) return(NA)
+  if (length(pvals) == 0) {
+    return(NA)
+  }
   chi_sq <- -2 * sum(log(pvals))
   df <- 2 * length(pvals)
   combined_p <- pchisq(chi_sq, df, lower.tail = FALSE)
@@ -127,7 +130,9 @@ fisher_combine_pvalues <- function(pvals) {
 #' Stouffer's method for combining p-values
 stouffer_combine_pvalues <- function(pvals, weights = NULL) {
   pvals <- pvals[!is.na(pvals) & pvals > 0 & pvals < 1]
-  if (length(pvals) == 0) return(NA)
+  if (length(pvals) == 0) {
+    return(NA)
+  }
   if (is.null(weights)) weights <- rep(1, length(pvals))
   z_scores <- qnorm(1 - pvals)
   combined_z <- sum(weights * z_scores) / sqrt(sum(weights^2))

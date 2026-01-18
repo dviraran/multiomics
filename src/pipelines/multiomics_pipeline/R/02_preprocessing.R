@@ -118,7 +118,14 @@ run_deseq2 <- function(counts, metadata, config) {
   )
 
   dds <- DESeq2::DESeq(dds)
-  normalized <- DESeq2::vst(dds, blind = FALSE)
+
+  if (nrow(dds) < 1000) {
+    log_message("Warning: Small dataset (< 1000 features). Using rlog instead of vst.")
+    normalized <- DESeq2::rlog(dds, blind = FALSE)
+  } else {
+    normalized <- DESeq2::vst(dds, blind = FALSE)
+  }
+
   normalized_matrix <- SummarizedExperiment::assay(normalized)
 
   # Get DE results for each contrast
@@ -387,7 +394,9 @@ run_limma_da <- function(mat, metadata, config, feature_type = "feature") {
     }
   }
 
-  if (length(all_results) == 0) return(NULL)
+  if (length(all_results) == 0) {
+    return(NULL)
+  }
 
   da_table <- do.call(rbind, all_results)
   da_table <- da_table[, c("feature_id", "logFC", "AveExpr", "P.Value", "adj.P.Val", "contrast")]

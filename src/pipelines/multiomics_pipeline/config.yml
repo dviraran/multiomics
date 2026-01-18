@@ -3,19 +3,19 @@ global:
   - transcriptomics
   - proteomics
   organism: Homo sapiens
-  metadata: ../examples/data/nci60/metadata.csv
+  metadata: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_metadata.csv
   sample_id_column: sample_id
 design:
   condition_column: condition
   design_formula: ~ condition
   contrasts:
-  - solid - hematological
-  reference_level: hematological
+  - treated - control
+  reference_level: control
   batch_column: ~
 transcriptomics:
   mode: raw
   raw:
-    counts_matrix: ../examples/data/nci60/rna_counts_matrix.csv
+    counts_matrix: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_rna_counts.csv
     mapping_file: ~
     gmt_file: ~
   preprocessed:
@@ -29,7 +29,7 @@ transcriptomics:
 proteomics:
   mode: raw
   raw:
-    intensity_matrix: ../examples/data/nci60/prot_intensity_matrix.csv
+    intensity_matrix: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_prot_intensity.csv
     mapping_file: ~
     contaminants_file: ~
   preprocessed:
@@ -96,6 +96,16 @@ integration:
     ncomp: 3
     keepX: 50
     keepY: 50
+ms_helios:
+  run_ms_helios: yes
+  compute_links: yes
+  tracks:
+    transcriptomics:
+      scale: zscore
+    proteomics:
+      scale: zscore
+    metabolomics:
+      cluster: yes
 enrichment:
   run_enrichment: yes
   methods: ora
@@ -103,6 +113,10 @@ enrichment:
   min_set_size: 10
   max_set_size: 500
   combine_method: fisher
+  multigsea:
+    run_multigsea: yes
+    pvalue_threshold: 0.05
+    correlation_method: pearson
 output:
   output_dir: outputs
   report_format: html
