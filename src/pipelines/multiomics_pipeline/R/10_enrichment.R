@@ -115,43 +115,99 @@ run_gene_enrichment <- function(de_table, gene_col, gmt, omic_name, config) {
   }
   # Try clusterProfiler for GO/KEGG
   else if (requireNamespace("clusterProfiler", quietly = TRUE) &&
-           requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
-    log_message("  Running GO enrichment via clusterProfiler...")
+    requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+    log_message("  Running enrichment via clusterProfiler...")
 
-    # Try to convert to Entrez IDs
-    tryCatch({
-      ego <- clusterProfiler::enrichGO(
-        gene = sig_genes,
-        universe = all_genes,
-        OrgDb = org.Hs.eg.db::org.Hs.eg.db,
-        keyType = "SYMBOL",
-        ont = "BP",
-        pAdjustMethod = "BH",
-        pvalueCutoff = pval_thresh,
-        minGSSize = min_size,
-        maxGSSize = max_size
-      )
+    enrich_results_list <- list()
 
-      if (!is.null(ego) && nrow(as.data.frame(ego)) > 0) {
-        result <- as.data.frame(ego)
-        result$omics <- omic_name
-        save_table(result, paste0(omic_name, "_GO_enrichment.csv"), config)
+    # 1. GO Enrichment (BP)
+    tryCatch(
+      {
+        log_message("    Running GO Enrichment (BP)...")
+        ego <- clusterProfiler::enrichGO(
+          gene = sig_genes,
+          universe = all_genes,
+          OrgDb = org.Hs.eg.db::org.Hs.eg.db,
+          keyType = "SYMBOL",
+          ont = "BP",
+          pAdjustMethod = "BH",
+          pvalueCutoff = pval_thresh,
+          minGSSize = min_size,
+          maxGSSize = max_size
+        )
 
-        # Plot
-        if (nrow(result) > 0) {
-          p <- plot_enrichment_dotplot(result, paste0(omic_name, " GO Enrichment"))
-          save_plot(p, paste0(omic_name, "_GO_enrichment"), config, width = 10, height = 8)
+        if (!is.null(ego) && nrow(as.data.frame(ego)) > 0) {
+          res_go <- as.data.frame(ego)
+          res_go$type <- "GO"
+          enrich_results_list[["GO"]] <- res_go
         }
-
-        return(list(
-          method = "GO_clusterProfiler",
-          results = result,
-          sig_genes = sig_genes
-        ))
+      },
+      error = function(e) {
+        log_message("    GO enrichment failed: ", e$message)
       }
-    }, error = function(e) {
-      log_message("  clusterProfiler enrichment failed: ", e$message)
-    })
+    )
+
+    # 2. KEGG Enrichment
+    # Check config for KEGG (default to TRUE if not specified, to enable pathview)
+    if (enrich_config$use_kegg %||% TRUE) {
+      log_message("    Running KEGG Enrichment...")
+      tryCatch(
+        {
+          # Map symbols to Entrez IDs
+          gene_map <- clusterProfiler::bitr(sig_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = "org.Hs.eg.db")
+          universe_map <- clusterProfiler::bitr(all_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = "org.Hs.eg.db")
+
+          if (!is.null(gene_map) && nrow(gene_map) > 0) {
+            ekegg <- clusterProfiler::enrichKEGG(
+              gene = gene_map$ENTREZID,
+              universe = universe_map$ENTREZID,
+              organism = "hsa", # Assuming human based on org.Hs.eg.db usage
+              pvalueCutoff = pval_thresh,
+              minGSSize = min_size,
+              maxGSSize = max_size
+            )
+
+            if (!is.null(ekegg) && nrow(as.data.frame(ekegg)) > 0) {
+              res_kegg <- as.data.frame(ekegg)
+              res_kegg$type <- "KEGG"
+              # KEGG results use Entrez ID in 'geneID' column.
+              # Ideally we might want to map back to symbols for consistency, but pathview needs Entrez.
+              # We can keep Entrez in geneID but maybe add a gene_symbol column?
+              # clusterProfiler usually does this is setReadable is used, but enrichKEGG returns Entrez.
+
+              enrich_results_list[["KEGG"]] <- res_kegg
+              log_message("    KEGG enrichment found ", nrow(res_kegg), " pathways")
+            }
+          } else {
+            log_message("    Could not map genes to Entrez IDs for KEGG")
+          }
+        },
+        error = function(e) {
+          log_message("    KEGG enrichment failed: ", e$message)
+        }
+      )
+    }
+
+    # Combine results
+    if (length(enrich_results_list) > 0) {
+      result <- do.call(rbind, enrich_results_list)
+      # Fill missing columns if any differences
+
+      result$omics <- omic_name
+      save_table(result, paste0(omic_name, "_enrichment_combined.csv"), config)
+
+      # Plot top terms (prioritize by pvalue)
+      if (nrow(result) > 0) {
+        p <- plot_enrichment_dotplot(result, paste0(omic_name, " Enrichment"))
+        save_plot(p, paste0(omic_name, "_enrichment_dotplot"), config, width = 10, height = 8)
+      }
+
+      return(list(
+        method = "clusterProfiler_Combined",
+        results = result,
+        sig_genes = sig_genes
+      ))
+    }
   }
 
   # Fallback: simple ORA with custom gene sets
@@ -186,12 +242,16 @@ run_simple_ora <- function(sig_genes, background, gene_sets, pval_thresh = 0.05)
     gs_in_bg <- intersect(gs_genes, background)
     n_gs <- length(gs_in_bg)
 
-    if (n_gs < 5) return(NULL)
+    if (n_gs < 5) {
+      return(NULL)
+    }
 
     overlap <- intersect(sig_genes, gs_in_bg)
     n_overlap <- length(overlap)
 
-    if (n_overlap == 0) return(NULL)
+    if (n_overlap == 0) {
+      return(NULL)
+    }
 
     # Fisher's exact test
     mat <- matrix(c(
@@ -217,11 +277,13 @@ run_simple_ora <- function(sig_genes, background, gene_sets, pval_thresh = 0.05)
 
   results <- do.call(rbind, results)
 
-  if (is.null(results) || nrow(results) == 0) return(NULL)
+  if (is.null(results) || nrow(results) == 0) {
+    return(NULL)
+  }
 
   results$padj <- p.adjust(results$pvalue, method = "BH")
   results$fold_enrichment <- (results$overlap / results$query_size) /
-                              (results$term_size / results$background_size)
+    (results$term_size / results$background_size)
 
   results <- results[results$padj < pval_thresh, ]
   results <- results[order(results$padj), ]
@@ -240,7 +302,9 @@ run_metabolite_enrichment <- function(da_table, pathway_mapping, gmt, config) {
 
   # Get significant metabolites
   padj_col <- intersect(c("adj.P.Val", "padj", "FDR"), colnames(da_table))[1]
-  if (is.na(padj_col)) return(NULL)
+  if (is.na(padj_col)) {
+    return(NULL)
+  }
 
   sig_features <- da_table$feature_id[da_table[[padj_col]] < 0.05]
   sig_features <- unique(sig_features[!is.na(sig_features)])
@@ -332,14 +396,16 @@ combine_enrichment_results <- function(per_omics_results, method = "fisher", con
 
   combined_df$combined_pvalue <- apply(pvals_matrix, 1, function(pvals) {
     pvals <- pvals[!is.na(pvals)]
-    if (length(pvals) < 2) return(NA)
+    if (length(pvals) < 2) {
+      return(NA)
+    }
 
     if (method == "fisher") {
       fisher_combine_pvalues(pvals)
     } else if (method == "stouffer") {
       stouffer_combine_pvalues(pvals)
     } else {
-      min(pvals)  # Minimum p-value
+      min(pvals) # Minimum p-value
     }
   })
 
@@ -412,27 +478,29 @@ run_mofa_factor_enrichment <- function(mofa_results, harmonized, config) {
 
         # Run enrichment if clusterProfiler available
         if (requireNamespace("clusterProfiler", quietly = TRUE) &&
-            requireNamespace("org.Hs.eg.db", quietly = TRUE) &&
-            length(top_pos_genes) > 10) {
+          requireNamespace("org.Hs.eg.db", quietly = TRUE) &&
+          length(top_pos_genes) > 10) {
+          tryCatch(
+            {
+              ego <- clusterProfiler::enrichGO(
+                gene = top_pos_genes,
+                OrgDb = org.Hs.eg.db::org.Hs.eg.db,
+                keyType = "SYMBOL",
+                ont = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05
+              )
 
-          tryCatch({
-            ego <- clusterProfiler::enrichGO(
-              gene = top_pos_genes,
-              OrgDb = org.Hs.eg.db::org.Hs.eg.db,
-              keyType = "SYMBOL",
-              ont = "BP",
-              pAdjustMethod = "BH",
-              pvalueCutoff = 0.05
-            )
-
-            if (!is.null(ego) && nrow(as.data.frame(ego)) > 0) {
-              result <- as.data.frame(ego)
-              result$factor <- factor_name
-              result$direction <- "positive"
-              save_table(result, paste0("mofa_", factor_name, "_pos_enrichment.csv"), config)
-              results[[paste0(factor_name, "_pos")]] <- result
-            }
-          }, error = function(e) NULL)
+              if (!is.null(ego) && nrow(as.data.frame(ego)) > 0) {
+                result <- as.data.frame(ego)
+                result$factor <- factor_name
+                result$direction <- "positive"
+                save_table(result, paste0("mofa_", factor_name, "_pos_enrichment.csv"), config)
+                results[[paste0(factor_name, "_pos")]] <- result
+              }
+            },
+            error = function(e) NULL
+          )
         }
       }
     }
@@ -448,7 +516,8 @@ run_mofa_factor_enrichment <- function(mofa_results, harmonized, config) {
 #' Plot enrichment dotplot
 plot_enrichment_dotplot <- function(enrich_df, title, n_terms = 20) {
   if (nrow(enrich_df) == 0) {
-    return(ggplot2::ggplot() + ggplot2::ggtitle("No enriched terms"))
+    return(ggplot2::ggplot() +
+      ggplot2::ggtitle("No enriched terms"))
   }
 
   # Select top terms

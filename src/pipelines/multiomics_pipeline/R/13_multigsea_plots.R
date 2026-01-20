@@ -151,3 +151,202 @@ run_multigsea_plots <- function(enrichment_results, config) {
     log_message("MultiGSEA plots generated: ", length(plots))
     return(plots)
 }
+
+#' Run Pathview Visualization for Agreed Pathways
+#'
+#' @param enrichment_results List containing enrichment results.
+#' @param mae_data MultiAssayExperiment data object (or list with harmonized_omics).
+#' @param config Pipeline configuration list.
+#'
+#' @return List of generated plot paths.
+#' @export
+run_multigsea_pathview <- function(enrichment_results, mae_data, config) {
+    log_message("=== Running MultiGSEA Pathview Visualization ===")
+
+    if (!requireNamespace("pathview", quietly = TRUE)) {
+        log_message("Package 'pathview' not installed. Skipping.")
+        return(NULL)
+    }
+
+    mg_config <- config$enrichment$multigsea %||% list()
+    if (!(mg_config$run_pathview %||% TRUE)) {
+        log_message("Pathview analysis disabled in config.")
+        return(NULL)
+    }
+
+    if (is.null(enrichment_results) || is.null(enrichment_results$per_omics)) {
+        log_message("No enrichment results available.")
+        return(NULL)
+    }
+
+    # Output directory
+    out_dir <- file.path(config$output$output_dir, "enrichment", "multigsea", "pathview")
+    if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
+    # 1. Identify Agreed KEGG Pathways
+    # We look for terms that are "KEGG" type and appear in >= 2 omics
+
+    per_omics <- enrichment_results$per_omics
+    omics_names <- names(per_omics)
+
+    kegg_pathways <- list()
+
+    for (omic in omics_names) {
+        res <- per_omics[[omic]]$results
+        if (!is.null(res) && nrow(res) > 0) {
+            # Check for KEGG results (ID starts with hsa or purely numeric, or type column)
+            # clusterProfiler KEGG IDs are usually "hsa12345"
+            is_kegg <- FALSE
+            if ("type" %in% colnames(res)) {
+                kegg_res <- res[res$type == "KEGG", ]
+            } else {
+                # Heuristic: IDs start with "hsa" or "map" or numeric
+                kegg_res <- res[grep("^hsa|^map|^[0-9]+$", res$ID), ]
+            }
+
+            if (nrow(kegg_res) > 0) {
+                kegg_pathways[[omic]] <- kegg_res$ID
+            }
+        }
+    }
+
+    if (length(kegg_pathways) < 2) {
+        log_message("Less than 2 omics have KEGG results. Skipping Pathview.")
+        return(NULL)
+    }
+
+    # Find common pathways
+    all_kegg <- unlist(kegg_pathways)
+    if (length(all_kegg) == 0) {
+        log_message("No KEGG pathways found.")
+        return(NULL)
+    }
+
+    pathway_counts <- table(all_kegg)
+    common_pathways <- names(pathway_counts)[pathway_counts >= 2]
+
+    if (length(common_pathways) == 0) {
+        log_message("No agreed KEGG pathways found between omics.")
+        return(NULL)
+    }
+
+    log_message("Found ", length(common_pathways), " agreed KEGG pathways.")
+
+    # 2. Prepare Data for Pathview
+    # Gene Data (Transcriptomics + Proteomics)
+    gene_data <- NULL
+
+    # helper to get fold changes
+    get_logfc <- function(omic_name, id_col = "entrez_id") {
+        if (!omic_name %in% names(mae_data$harmonized_omics)) {
+            return(NULL)
+        }
+
+        dat <- mae_data$harmonized_omics[[omic_name]]
+        de <- dat$de_table %||% dat$da_table
+        anno <- dat$feature_annotation
+
+        if (is.null(de) || is.null(anno)) {
+            return(NULL)
+        }
+
+        # Merge to get IDs
+        # feature_id is common
+        merged <- merge(de, anno, by = "feature_id")
+
+        if (!id_col %in% colnames(merged)) {
+            return(NULL)
+        }
+
+        # Get LogFC column
+        fc_col <- grep("logFC|log2FoldChange", colnames(merged), ignore.case = TRUE, value = TRUE)[1]
+        if (is.na(fc_col)) {
+            return(NULL)
+        }
+
+        # Create named vector
+        # Handle multiple features mapping to same Entrez ID: take mean
+        vec <- tapply(merged[[fc_col]], merged[[id_col]], mean, na.rm = TRUE)
+        return(vec)
+    }
+
+    # Transcriptomics
+    rna_fc <- get_logfc("transcriptomics", "entrez_id")
+
+    # Proteomics
+    prot_fc <- get_logfc("proteomics", "entrez_id")
+
+    # Combine Gene Data
+    if (!is.null(rna_fc) && !is.null(prot_fc)) {
+        # Create matrix
+        all_genes <- unique(c(names(rna_fc), names(prot_fc)))
+        gene_data <- matrix(NA,
+            nrow = length(all_genes), ncol = 2,
+            dimnames = list(all_genes, c("Transcriptomics", "Proteomics"))
+        )
+
+        idx_rna <- match(names(rna_fc), all_genes)
+        gene_data[idx_rna, 1] <- rna_fc
+
+        idx_prot <- match(names(prot_fc), all_genes)
+        gene_data[idx_prot, 2] <- prot_fc
+    } else if (!is.null(rna_fc)) {
+        gene_data <- rna_fc
+    } else if (!is.null(prot_fc)) {
+        gene_data <- prot_fc
+    }
+
+    # Metabolomics Data (CPD Data)
+    cpd_data <- NULL
+    met_fc <- get_logfc("metabolomics", "kegg_id")
+    if (!is.null(met_fc)) {
+        cpd_data <- met_fc
+    }
+
+    if (is.null(gene_data) && is.null(cpd_data)) {
+        log_message("No valid Entrez/KEGG IDs found in data for Pathview.")
+        return(NULL)
+    }
+
+    # 3. Run Pathview
+    generated_plots <- list()
+
+    cwd <- getwd()
+    setwd(out_dir)
+    on.exit(setwd(cwd))
+
+    for (pid in common_pathways) {
+        # Clean ID
+        clean_pid <- sub("^[a-z]+", "", pid)
+
+        tryCatch(
+            {
+                pv.out <- pathview::pathview(
+                    gene.data = gene_data,
+                    cpd.data = cpd_data,
+                    pathway.id = clean_pid,
+                    species = "hsa",
+                    out.suffix = "multiomics",
+                    temp.file = TRUE,
+                    kegg.dir = out_dir,
+                    keys.align = "y",
+                    kev.dir = NULL,
+                    match.data = TRUE,
+                    multi.state = !is.null(dim(gene_data)) && ncol(gene_data) > 1,
+                    same.layer = FALSE
+                )
+
+                outfile <- paste0("hsa", clean_pid, ".multiomics.png")
+                if (file.exists(outfile)) {
+                    generated_plots[[pid]] <- file.path(out_dir, outfile)
+                    log_message("Generated Pathview: ", outfile)
+                }
+            },
+            error = function(e) {
+                log_message("Pathview failed for ", pid, ": ", e$message)
+            }
+        )
+    }
+
+    return(generated_plots)
+}

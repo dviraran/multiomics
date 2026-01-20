@@ -110,7 +110,7 @@ tar_option_set(
     # Enrichment (optional)
     "clusterProfiler", "org.Hs.eg.db", "fgsea",
     # Visualization
-    "ggplot2", "patchwork", "ComplexHeatmap", "circlize", "ggrepel"
+    "ggplot2", "patchwork", "ComplexHeatmap", "circlize", "ggrepel", "pathview"
   ),
   error = "continue" # Continue pipeline even if some targets fail
 )
@@ -299,6 +299,12 @@ list(
   tar_target(
     name = multigsea_plots,
     command = run_multigsea_plots(enrichment_results, config)
+  ),
+
+  # MultiGSEA Pathview (NEW)
+  tar_target(
+    name = multigsea_pathview,
+    command = run_multigsea_pathview(enrichment_results, mae_data, config)
   ),
 
 
