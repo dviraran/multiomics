@@ -78,19 +78,24 @@ run_diablo_integration <- function(feature_data, config) {
   log_message("Running DIABLO with ", ncomp, " components, design: ", design_type)
 
   # Run DIABLO
-  diablo_result <- tryCatch({
-    mixOmics::block.splsda(
-      X = X,
-      Y = Y,
-      ncomp = ncomp,
-      design = design
-    )
-  }, error = function(e) {
-    log_message("Error in DIABLO: ", e$message)
-    return(NULL)
-  })
+  diablo_result <- tryCatch(
+    {
+      mixOmics::block.splsda(
+        X = X,
+        Y = Y,
+        ncomp = ncomp,
+        design = design
+      )
+    },
+    error = function(e) {
+      log_message("Error in DIABLO: ", e$message)
+      return(NULL)
+    }
+  )
 
-  if (is.null(diablo_result)) return(NULL)
+  if (is.null(diablo_result)) {
+    return(NULL)
+  }
 
   log_message("DIABLO training complete")
 
@@ -118,8 +123,10 @@ run_diablo_integration <- function(feature_data, config) {
 #' Create DIABLO design matrix
 create_diablo_design <- function(block_names, design_type = "full") {
   n_blocks <- length(block_names)
-  design <- matrix(0, nrow = n_blocks, ncol = n_blocks,
-                   dimnames = list(block_names, block_names))
+  design <- matrix(0,
+    nrow = n_blocks, ncol = n_blocks,
+    dimnames = list(block_names, block_names)
+  )
 
   if (design_type == "full") {
     # All blocks connected (correlation = 1)
@@ -191,24 +198,31 @@ extract_diablo_results <- function(diablo_model, config) {
 
 #' Evaluate DIABLO performance via CV
 evaluate_diablo_performance <- function(diablo_model, X, Y, design, ncomp,
-                                         cv_folds, cv_repeats, config) {
-  log_message("Evaluating DIABLO performance (", cv_folds, "-fold CV x ",
-             cv_repeats, " repeats)...")
+                                        cv_folds, cv_repeats, config) {
+  log_message(
+    "Evaluating DIABLO performance (", cv_folds, "-fold CV x ",
+    cv_repeats, " repeats)..."
+  )
 
-  perf_result <- tryCatch({
-    mixOmics::perf(
-      diablo_model,
-      validation = "Mfold",
-      folds = cv_folds,
-      nrepeat = cv_repeats,
-      progressBar = FALSE
-    )
-  }, error = function(e) {
-    log_message("CV performance evaluation failed: ", e$message)
+  perf_result <- tryCatch(
+    {
+      mixOmics::perf(
+        diablo_model,
+        validation = "Mfold",
+        folds = cv_folds,
+        nrepeat = cv_repeats,
+        progressBar = FALSE
+      )
+    },
+    error = function(e) {
+      log_message("CV performance evaluation failed: ", e$message)
+      return(NULL)
+    }
+  )
+
+  if (is.null(perf_result)) {
     return(NULL)
-  })
-
-  if (is.null(perf_result)) return(NULL)
+  }
 
   # Extract error rates
   error_rates <- perf_result$WeightedVote.error.rate
@@ -238,9 +252,12 @@ evaluate_diablo_performance <- function(diablo_model, X, Y, design, ncomp,
   }
 
   # Optimal number of components
-  optimal_ncomp <- tryCatch({
-    perf_result$choice.ncomp$WeightedVote["Overall.BER", "centroids.dist"]
-  }, error = function(e) ncomp)
+  optimal_ncomp <- tryCatch(
+    {
+      perf_result$choice.ncomp$WeightedVote["Overall.BER", "centroids.dist"]
+    },
+    error = function(e) ncomp
+  )
 
   log_message("Suggested optimal ncomp: ", optimal_ncomp)
 
@@ -253,40 +270,70 @@ evaluate_diablo_performance <- function(diablo_model, X, Y, design, ncomp,
 
 #' Create DIABLO visualizations
 create_diablo_plots <- function(diablo_model, diablo_results, metadata,
-                                 condition_col, config) {
+                                condition_col, config) {
   log_message("Creating DIABLO plots...")
 
   Y <- diablo_results$Y
 
   # 1. Sample plot (first 2 components)
-  tryCatch({
-    p <- plot_diablo_samples(diablo_model, Y, comp = c(1, 2))
-    save_plot(p, "diablo_sample_plot_comp1_2", config, width = 10, height = 8)
-  }, error = function(e) log_message("Failed to create sample plot: ", e$message))
+  tryCatch(
+    {
+      p <- plot_diablo_samples(diablo_model, Y, comp = c(1, 2))
+      save_plot(p, "diablo_sample_plot_comp1_2.png", config, width = 10, height = 8)
+    },
+    error = function(e) log_message("Failed to create sample plot: ", e$message)
+  )
 
   # 2. Correlation circle plot
-  tryCatch({
-    p <- plot_diablo_correlation_circle(diablo_model)
-    save_plot(p, "diablo_correlation_circle", config, width = 10, height = 10)
-  }, error = function(e) log_message("Failed to create correlation plot: ", e$message))
+  tryCatch(
+    {
+      p <- plot_diablo_correlation_circle(diablo_model)
+      save_plot(p, "diablo_correlation_circle.png", config, width = 10, height = 10)
+    },
+    error = function(e) log_message("Failed to create correlation plot: ", e$message)
+  )
 
   # 3. Loadings plot per block
-  tryCatch({
-    for (block in names(diablo_results$loadings)) {
-      if (block == "Y") next
-      p <- plot_diablo_loadings(diablo_model, block)
-      save_plot(p, paste0("diablo_loadings_", block), config, width = 10, height = 8)
-    }
-  }, error = function(e) log_message("Failed to create loadings plots: ", e$message))
+  tryCatch(
+    {
+      for (block in names(diablo_results$loadings)) {
+        if (block == "Y") next
+        p <- plot_diablo_loadings(diablo_model, block)
+        save_plot(p, paste0("diablo_loadings_", block, ".png"), config, width = 10, height = 8)
+      }
+    },
+    error = function(e) log_message("Failed to create loadings plots: ", e$message)
+  )
+
+
 
   # 4. Circos plot for feature correlations
-  tryCatch({
-    circos_file <- file.path(config$output$output_dir, "plots", "diablo_circos.pdf")
-    pdf(circos_file, width = 10, height = 10)
-    mixOmics::circosPlot(diablo_model, cutoff = 0.7)
-    dev.off()
-    log_message("Saved circos plot to ", circos_file)
-  }, error = function(e) log_message("Failed to create circos plot: ", e$message))
+  tryCatch(
+    {
+      circos_file <- file.path(config$output$output_dir, "plots", "diablo_circos.png")
+
+      # Use png device directly as circosPlot plots to device
+      png(circos_file, width = 1000, height = 1000, res = 150)
+      mixOmics::circosPlot(diablo_model,
+        cutoff = 0.7, line = TRUE,
+        color.blocks = c("darkorchid", "brown1", "lightgreen"),
+        color.cor = c("chocolate3", "grey20"), size.labels = 1.5
+      )
+      dev.off()
+
+      log_message("Saved circos plot to ", circos_file)
+    },
+    error = function(e) log_message("Failed to create circos plot: ", e$message)
+  )
+
+  # 5. Enrichment on Loadings
+  tryCatch(
+    {
+      run_diablo_enrichment(diablo_results, config)
+    },
+    error = function(e) log_message("Failed to run DIABLO enrichment: ", e$message)
+  )
+
 
   log_message("DIABLO plots complete")
 }
@@ -348,7 +395,8 @@ plot_diablo_correlation_circle <- function(diablo_model) {
   }))
 
   if (is.null(all_loadings) || nrow(all_loadings) == 0) {
-    return(ggplot2::ggplot() + ggplot2::ggtitle("No loadings to display"))
+    return(ggplot2::ggplot() +
+      ggplot2::ggtitle("No loadings to display"))
   }
 
   # Draw correlation circle
@@ -379,14 +427,16 @@ plot_diablo_loadings <- function(diablo_model, block, comp = 1, n_top = 20) {
   loadings <- diablo_model$loadings[[block]]
 
   if (ncol(loadings) < comp) {
-    return(ggplot2::ggplot() + ggplot2::ggtitle("Component not available"))
+    return(ggplot2::ggplot() +
+      ggplot2::ggtitle("Component not available"))
   }
 
   load_vec <- loadings[, comp]
   load_vec <- load_vec[load_vec != 0]
 
   if (length(load_vec) == 0) {
-    return(ggplot2::ggplot() + ggplot2::ggtitle("No selected features"))
+    return(ggplot2::ggplot() +
+      ggplot2::ggtitle("No selected features"))
   }
 
   # Top features by absolute loading
@@ -439,4 +489,175 @@ get_diablo_discriminating_features <- function(diablo_results, min_loading = 0.1
   }
 
   do.call(rbind, all_features)
+}
+
+#' Run DIABLO enrichment on loadings
+run_diablo_enrichment <- function(diablo_results, config) {
+  log_message("Running enrichment on DIABLO loadings...")
+
+  if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
+    log_message("clusterProfiler not installed, skipping enrichment")
+    return(NULL)
+  }
+
+  loadings <- diablo_results$loadings
+  enrich_results <- list()
+
+  # Identify organism-specific settings
+  organism_name <- config$global$organism %||% "human"
+  org_db <- NULL
+  kegg_code <- NULL
+
+  if (organism_name == "c_elegans") {
+    if (requireNamespace("org.Ce.eg.db", quietly = TRUE)) {
+      org_db <- org.Ce.eg.db::org.Ce.eg.db
+      kegg_code <- "cel"
+    }
+  } else {
+    if (requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+      org_db <- org.Hs.eg.db::org.Hs.eg.db
+      kegg_code <- "hsa"
+    }
+  }
+
+  if (is.null(org_db)) {
+    log_message("OrgDb not found for ", organism_name, ", skipping enrichment")
+    return(NULL)
+  }
+
+  # Iterate through blocks (omics)
+  for (block in names(loadings)) {
+    if (block == "Y") next
+
+    # Skip metabolomics for gene enrichment
+    if (block == "metabolomics") {
+      log_message("  Skipping gene enrichment for metabolomics block")
+      next
+    }
+
+    log_message("  Processing block: ", block)
+    load_mat <- loadings[[block]]
+
+    # Iterate through component columns
+    for (k in seq_len(ncol(load_mat))) {
+      comp_name <- paste0("comp", k)
+
+      # Get top 100 features by absolute weight
+      w <- load_mat[, k]
+      top_features <- names(sort(abs(w), decreasing = TRUE))[1:100]
+
+      log_message("    Top features example: ", paste(head(top_features, 3), collapse = ", "))
+
+      # Convert ID type based on block
+      key_type <- "SYMBOL" # Default
+
+      # Heuristic: Check ID structure
+      if (all(grepl("^WBGene", top_features[1:5], ignore.case = TRUE))) {
+        key_type <- "WORMBASE"
+      } else if (all(grepl("^ENS", top_features[1:5], ignore.case = TRUE))) {
+        key_type <- "ENSEMBL"
+      } else if (any(grepl("^[OPQ][0-9]", top_features[1:5], ignore.case = TRUE)) ||
+        any(grepl("^A0A", top_features[1:5], ignore.case = TRUE))) {
+        key_type <- "UNIPROT"
+      }
+
+      log_message("    Detected keyType: ", key_type)
+
+      tryCatch(
+        {
+          gene_map <- clusterProfiler::bitr(top_features,
+            fromType = key_type,
+            toType = "ENTREZID", OrgDb = org_db
+          )
+
+          if (!is.null(gene_map) && nrow(gene_map) > 5) {
+            genes <- gene_map$ENTREZID
+
+            # 1. KEGG Enrichment
+            tryCatch(
+              {
+                c_kegg <- clusterProfiler::enrichKEGG(gene = genes, organism = kegg_code, pvalueCutoff = 0.05)
+
+                if (!is.null(c_kegg) && nrow(as.data.frame(c_kegg)) > 0) {
+                  res_kegg <- as.data.frame(c_kegg)
+                  res_kegg$block <- block
+                  res_kegg$component <- comp_name
+                  res_kegg$type <- "KEGG"
+
+                  out_name <- paste0("diablo_enrichment_kegg_", block, "_", comp_name)
+                  save_table(res_kegg, paste0(out_name, ".csv"), config)
+
+                  p <- clusterProfiler::dotplot(c_kegg, showCategory = 15) +
+                    ggplot2::ggtitle(paste0("KEGG: ", block, " - ", comp_name))
+                  save_plot(p, paste0(out_name, ".png"), config)
+
+                  enrich_results[[out_name]] <- res_kegg
+                  log_message("    KEGG success: ", nrow(res_kegg), " pathways")
+                }
+              },
+              error = function(e) log_message("    KEGG failed: ", e$message)
+            )
+
+            # 2. GO Enrichment (BP) - Robust Fallback
+            tryCatch(
+              {
+                c_go <- clusterProfiler::enrichGO(gene = genes, OrgDb = org_db, ont = "BP", pvalueCutoff = 0.05)
+
+                if (!is.null(c_go) && nrow(as.data.frame(c_go)) > 0) {
+                  res_go <- as.data.frame(c_go)
+                  res_go$block <- block
+                  res_go$component <- comp_name
+                  res_go$type <- "GO"
+
+                  out_name <- paste0("diablo_enrichment_go_", block, "_", comp_name)
+                  save_table(res_go, paste0(out_name, ".csv"), config)
+
+                  p <- clusterProfiler::dotplot(c_go, showCategory = 15) +
+                    ggplot2::ggtitle(paste0("GO BP: ", block, " - ", comp_name))
+                  save_plot(p, paste0(out_name, ".png"), config)
+
+                  enrich_results[[out_name]] <- res_go
+                  log_message("    GO success: ", nrow(res_go), " terms")
+                }
+              },
+              error = function(e) log_message("    GO failed: ", e$message)
+            )
+
+            # 3. Reactome Enrichment (if applicable)
+            if (requireNamespace("ReactomePA", quietly = TRUE) && organism_name == "c_elegans") {
+              tryCatch(
+                {
+                  c_react <- ReactomePA::enrichPathway(gene = genes, organism = "celegans", pvalueCutoff = 0.05)
+                  if (!is.null(c_react) && nrow(as.data.frame(c_react)) > 0) {
+                    res_react <- as.data.frame(c_react)
+                    res_react$block <- block
+                    res_react$component <- comp_name
+                    res_react$type <- "Reactome"
+
+                    out_name <- paste0("diablo_enrichment_reactome_", block, "_", comp_name)
+                    save_table(res_react, paste0(out_name, ".csv"), config)
+
+                    p <- clusterProfiler::dotplot(c_react, showCategory = 15) +
+                      ggplot2::ggtitle(paste0("Reactome: ", block, " - ", comp_name))
+                    save_plot(p, paste0(out_name, ".png"), config)
+
+                    enrich_results[[out_name]] <- res_react
+                    log_message("    Reactome success: ", nrow(res_react), " pathways")
+                  }
+                },
+                error = function(e) log_message("    Reactome failed: ", e$message)
+              )
+            }
+          } else {
+            log_message("    Could not map enough genes to ENTREZID")
+          }
+        },
+        error = function(e) {
+          log_message("    Enrichment error for ", block, " ", comp_name, ": ", e$message)
+        }
+      )
+    }
+  }
+
+  return(enrich_results)
 }

@@ -14,14 +14,17 @@ ingest_all_data <- function(config) {
   omics_present <- config$global$omics_present
   omics_data <- list()
 
+  # Get valid sample IDs from metadata
+  valid_samples <- metadata[[config$global$sample_id_column]]
+
   if ("transcriptomics" %in% omics_present) {
-    omics_data$transcriptomics <- load_transcriptomics(config)
+    omics_data$transcriptomics <- load_transcriptomics(config, valid_samples)
   }
   if ("proteomics" %in% omics_present) {
-    omics_data$proteomics <- load_proteomics(config)
+    omics_data$proteomics <- load_proteomics(config, valid_samples)
   }
   if ("metabolomics" %in% omics_present) {
-    omics_data$metabolomics <- load_metabolomics(config)
+    omics_data$metabolomics <- load_metabolomics(config, valid_samples)
   }
 
   # Create sample alignment table
@@ -81,12 +84,12 @@ load_metadata <- function(config) {
 }
 
 #' Load transcriptomics data
-load_transcriptomics <- function(config) {
+load_transcriptomics <- function(config, valid_samples = NULL) {
   log_message("Loading transcriptomics data...")
   tc <- config$transcriptomics
 
   if (tc$mode == "preprocessed") {
-    return(load_preprocessed_omics(tc$preprocessed, "transcriptomics"))
+    return(load_preprocessed_omics(tc$preprocessed, "transcriptomics", valid_samples))
   }
 
   # Raw mode
@@ -96,14 +99,9 @@ load_transcriptomics <- function(config) {
   }
 
   counts_df <- readr::read_csv(counts_path, show_col_types = FALSE)
-  gene_ids <- as.character(counts_df[[1]])
-  sample_cols <- colnames(counts_df)[-1]
-  sample_cols <- sanitize_names(sample_cols)
 
-  mat <- as.matrix(counts_df[, -1])
-  rownames(mat) <- gene_ids
-  colnames(mat) <- sample_cols
-  storage.mode(mat) <- "numeric"
+  # Process using helper
+  mat <- process_matrix_from_df(counts_df, valid_samples)
 
   # Load mapping file if provided
   mapping <- NULL
@@ -131,12 +129,12 @@ load_transcriptomics <- function(config) {
 }
 
 #' Load proteomics data
-load_proteomics <- function(config) {
+load_proteomics <- function(config, valid_samples = NULL) {
   log_message("Loading proteomics data...")
   pc <- config$proteomics
 
   if (pc$mode == "preprocessed") {
-    return(load_preprocessed_omics(pc$preprocessed, "proteomics"))
+    return(load_preprocessed_omics(pc$preprocessed, "proteomics", valid_samples))
   }
 
   # Raw mode
@@ -146,13 +144,7 @@ load_proteomics <- function(config) {
   }
 
   int_df <- readr::read_csv(intensity_path, show_col_types = FALSE)
-  protein_ids <- as.character(int_df[[1]])
-  sample_cols <- sanitize_names(colnames(int_df)[-1])
-
-  mat <- as.matrix(int_df[, -1])
-  rownames(mat) <- protein_ids
-  colnames(mat) <- sample_cols
-  storage.mode(mat) <- "numeric"
+  mat <- process_matrix_from_df(int_df, valid_samples)
 
   # Handle zeros
   if (pc$processing$zeros_as_na %||% TRUE) {
@@ -178,12 +170,12 @@ load_proteomics <- function(config) {
 }
 
 #' Load metabolomics data
-load_metabolomics <- function(config) {
+load_metabolomics <- function(config, valid_samples = NULL) {
   log_message("Loading metabolomics data...")
   mc <- config$metabolomics
 
   if (mc$mode == "preprocessed") {
-    return(load_preprocessed_omics(mc$preprocessed, "metabolomics"))
+    return(load_preprocessed_omics(mc$preprocessed, "metabolomics", valid_samples))
   }
 
   # Raw mode
@@ -193,13 +185,7 @@ load_metabolomics <- function(config) {
   }
 
   feat_df <- readr::read_csv(feature_path, show_col_types = FALSE)
-  feature_ids <- as.character(feat_df[[1]])
-  sample_cols <- sanitize_names(colnames(feat_df)[-1])
-
-  mat <- as.matrix(feat_df[, -1])
-  rownames(mat) <- feature_ids
-  colnames(mat) <- sample_cols
-  storage.mode(mat) <- "numeric"
+  mat <- process_matrix_from_df(feat_df, valid_samples)
 
   if (mc$processing$zeros_as_na %||% TRUE) {
     mat[mat == 0] <- NA
@@ -240,7 +226,7 @@ load_metabolomics <- function(config) {
 }
 
 #' Load preprocessed omics data
-load_preprocessed_omics <- function(preproc_config, omics_name) {
+load_preprocessed_omics <- function(preproc_config, omics_name, valid_samples = NULL) {
   log_message("Loading preprocessed ", omics_name, " data...")
 
   norm_path <- preproc_config$normalized_matrix
@@ -249,13 +235,7 @@ load_preprocessed_omics <- function(preproc_config, omics_name) {
   }
 
   norm_df <- readr::read_csv(norm_path, show_col_types = FALSE)
-  feature_ids <- as.character(norm_df[[1]])
-  sample_cols <- sanitize_names(colnames(norm_df)[-1])
-
-  mat <- as.matrix(norm_df[, -1])
-  rownames(mat) <- feature_ids
-  colnames(mat) <- sample_cols
-  storage.mode(mat) <- "numeric"
+  mat <- process_matrix_from_df(norm_df, valid_samples)
 
   # Load DE/DA table if provided
   de_table <- NULL
@@ -275,6 +255,51 @@ load_preprocessed_omics <- function(preproc_config, omics_name) {
   )
 }
 
+#' Helper to process matrix from dataframe with sample filtering and duplicate handling
+process_matrix_from_df <- function(df, valid_samples = NULL) {
+  feature_ids <- as.character(df[[1]])
+
+  # Remove rows with missing or empty IDs
+  valid_id_idx <- !is.na(feature_ids) & feature_ids != "" & feature_ids != "NA"
+  if (any(!valid_id_idx)) {
+    n_invalid <- sum(!valid_id_idx)
+    log_message("  Warning: Removing ", n_invalid, " rows with missing/empty feature IDs")
+    df <- df[valid_id_idx, ]
+    feature_ids <- feature_ids[valid_id_idx]
+  }
+
+  # Handle duplicates
+  if (any(duplicated(feature_ids))) {
+    n_dup <- sum(duplicated(feature_ids))
+    log_message("  Warning: Found ", n_dup, " duplicate feature IDs. Making unique.")
+    feature_ids <- make.unique(feature_ids)
+  }
+
+  # Filter columns
+  raw_cols <- colnames(df)[-1]
+  sanitized_cols <- sanitize_names(raw_cols)
+
+  if (!is.null(valid_samples)) {
+    keep_idx <- which(sanitized_cols %in% valid_samples)
+    if (length(keep_idx) == 0) {
+      stop("No columns matched valid sample IDs from metadata")
+    }
+    log_message("  Matched ", length(keep_idx), " sample columns out of ", length(raw_cols))
+
+    # +1 because df has ID in col 1
+    mat <- as.matrix(df[, keep_idx + 1])
+    colnames(mat) <- sanitized_cols[keep_idx]
+  } else {
+    mat <- as.matrix(df[, -1])
+    colnames(mat) <- sanitized_cols
+  }
+
+  rownames(mat) <- feature_ids
+  storage.mode(mat) <- "numeric"
+
+  return(mat)
+}
+
 #' Create sample alignment table
 create_sample_alignment <- function(metadata, omics_data, config) {
   sample_col <- config$global$sample_id_column
@@ -292,8 +317,10 @@ create_sample_alignment <- function(metadata, omics_data, config) {
     # Check for samples in omics but not metadata
     extra_samples <- setdiff(omics_samples, meta_samples)
     if (length(extra_samples) > 0) {
-      warning(omics_name, " has ", length(extra_samples), " samples not in metadata: ",
-              paste(head(extra_samples, 3), collapse = ", "))
+      warning(
+        omics_name, " has ", length(extra_samples), " samples not in metadata: ",
+        paste(head(extra_samples, 3), collapse = ", ")
+      )
     }
   }
 

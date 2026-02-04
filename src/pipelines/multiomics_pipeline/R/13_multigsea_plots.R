@@ -52,16 +52,33 @@ run_multigsea_plots <- function(enrichment_results, config) {
 
         if (is.null(res1) || is.null(res2)) next
 
-        # Merge by term
-        # Ensure column names are consistent or use 'term'
-        common_terms <- intersect(res1$term, res2$term)
+        # Standardize 'term' column helper
+        get_term_col <- function(df) {
+            if ("term" %in% colnames(df)) {
+                return(df$term)
+            }
+            if ("ID" %in% colnames(df)) {
+                return(df$ID)
+            }
+            if ("Description" %in% colnames(df)) {
+                return(df$Description)
+            }
+            return(rownames(df))
+        }
+
+        res1$term <- get_term_col(res1)
+        res2$term <- get_term_col(res2)
+
+        # Union of terms
+        common_terms <- union(res1$term, res2$term)
 
         if (length(common_terms) < 3) {
-            log_message("Too few common terms between ", omic1, " and ", omic2)
+            log_message("Too few terms (union) between ", omic1, " and ", omic2)
             next
         }
 
-        # Align data
+        # Align data (fill missing with NA first, then score function handles it)
+        # Actually easier to merge full dataframes
         df1 <- res1[match(common_terms, res1$term), ]
         df2 <- res2[match(common_terms, res2$term), ]
 
@@ -72,9 +89,35 @@ run_multigsea_plots <- function(enrichment_results, config) {
         # Let's use simple -log10(padj).
 
         get_score <- function(df) {
-            padj <- df$padj
+            # Robustly find p-adj column
+            padj_col <- NULL
+            for (col in c("padj", "p.adjust", "adj.P.Val", "FDR", "qvalue", "pvalue")) {
+                if (col %in% colnames(df)) {
+                    padj_col <- col
+                    break
+                }
+            }
+
+            if (is.null(padj_col)) {
+                # Fallback to dummy
+                warning("No p-value column found in enrichment results")
+                return(rep(0, nrow(df)))
+            }
+
+            padj <- df[[padj_col]]
+
+            # Handle NAs
+            padj[is.na(padj)] <- 1
+
             # Handle zero p-values (replace with min non-zero or epsilon)
-            min_nz <- min(padj[padj > 0], na.rm = TRUE)
+            # If all are 0 or 1, this min_nz might be Inf or 1
+            non_zeros <- padj[padj > 0 & padj < 1]
+            if (length(non_zeros) > 0) {
+                min_nz <- min(non_zeros, na.rm = TRUE)
+            } else {
+                min_nz <- 1e-10 # Default epsilon
+            }
+
             padj[padj == 0] <- min_nz / 10
             -log10(padj)
         }
@@ -118,8 +161,8 @@ run_multigsea_plots <- function(enrichment_results, config) {
             ggplot2::scale_color_manual(values = c(
                 "Both Sig" = "red",
                 "Not Sig" = "grey",
-                setNames("blue", paste0(omic1, " Sig")),
-                setNames("green", paste0(omic2, " Sig"))
+                setNames("gray", paste0(omic1, " Sig")),
+                setNames("gray", paste0(omic2, " Sig"))
             ))
 
         # Add labels for top points (e.g., both sig)
@@ -141,8 +184,8 @@ run_multigsea_plots <- function(enrichment_results, config) {
         }
 
         # Save
-        filename <- paste0("multigsea_", omic1, "_vs_", omic2)
-        save_plot(p, filename, config, width = 8, height = 8, custom_path = out_dir)
+        filename <- paste0("multigsea_", omic1, "_vs_", omic2, ".png")
+        save_plot(p, filename, config, width = 8, height = 8, subdir = "enrichment/multigsea")
         save_table(plot_df, paste0(filename, ".csv"), config) # Save underlying data
 
         plots[[filename]] <- p
@@ -325,7 +368,13 @@ run_multigsea_pathview <- function(enrichment_results, mae_data, config) {
                     gene.data = gene_data,
                     cpd.data = cpd_data,
                     pathway.id = clean_pid,
-                    species = "hsa",
+                    species = if (!is.null(mg_config$organism_code)) {
+                        mg_config$organism_code
+                    } else if ((config$global$organism %||% "human") == "c_elegans") {
+                        "cel"
+                    } else {
+                        "hsa"
+                    },
                     out.suffix = "multiomics",
                     temp.file = TRUE,
                     kegg.dir = out_dir,

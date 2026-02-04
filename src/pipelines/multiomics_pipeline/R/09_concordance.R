@@ -13,7 +13,7 @@ run_concordance_analysis <- function(mae_data, integration_results, config) {
 
   # 1. RNA-Protein concordance (if both present)
   if ("transcriptomics" %in% names(harmonized) &&
-      "proteomics" %in% names(harmonized)) {
+    "proteomics" %in% names(harmonized)) {
     results$rna_protein <- analyze_rna_protein_concordance(
       harmonized$transcriptomics,
       harmonized$proteomics,
@@ -100,9 +100,11 @@ analyze_rna_protein_concordance <- function(rna_data, prot_data, gene_mapping, c
     pct_positive = 100 * sum(correlations > 0) / length(correlations)
   )
 
-  log_message("RNA-Protein correlation: mean=", round(summary_stats$mean_cor, 3),
-             ", median=", round(summary_stats$median_cor, 3),
-             ", ", summary_stats$pct_positive, "% positive")
+  log_message(
+    "RNA-Protein correlation: mean=", round(summary_stats$mean_cor, 3),
+    ", median=", round(summary_stats$median_cor, 3),
+    ", ", summary_stats$pct_positive, "% positive"
+  )
 
   # Save correlation table
   cor_df <- data.frame(
@@ -115,7 +117,7 @@ analyze_rna_protein_concordance <- function(rna_data, prot_data, gene_mapping, c
 
   # Create visualization
   p <- plot_rna_protein_concordance(correlations)
-  save_plot(p, "rna_protein_concordance", config, width = 10, height = 6)
+  save_plot(p, "rna_protein_concordance.png", config, width = 10, height = 6)
 
   list(
     correlations = correlations,
@@ -132,13 +134,17 @@ plot_rna_protein_concordance <- function(correlations) {
   p1 <- ggplot2::ggplot(df, ggplot2::aes(x = correlation)) +
     ggplot2::geom_histogram(bins = 50, fill = "steelblue", color = "white", alpha = 0.7) +
     ggplot2::geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
-    ggplot2::geom_vline(xintercept = median(correlations), color = "darkgreen",
-                        linetype = "dashed") +
+    ggplot2::geom_vline(
+      xintercept = median(correlations), color = "darkgreen",
+      linetype = "dashed"
+    ) +
     ggplot2::theme_minimal() +
     ggplot2::labs(
       title = "RNA-Protein Correlation Distribution",
-      subtitle = paste0("n=", length(correlations), " genes, median=",
-                       round(median(correlations), 3)),
+      subtitle = paste0(
+        "n=", length(correlations), " genes, median=",
+        round(median(correlations), 3)
+      ),
       x = "Pearson Correlation",
       y = "Count"
     )
@@ -230,30 +236,40 @@ analyze_de_concordance <- function(harmonized_omics, config) {
         pct_directional_concordance = pct_concordant
       )
 
-      log_message("RNA-Protein DE concordance: ",
-                 round(fc_cor, 3), " (FC correlation), ",
-                 round(pct_concordant, 1), "% directional agreement")
+      log_message(
+        "RNA-Protein DE concordance: ",
+        round(fc_cor, 3), " (FC correlation), ",
+        round(pct_concordant, 1), "% directional agreement"
+      )
+
+      # Detect padj columns
+      rna_padj_col <- intersect(c("padj", "adj.P.Val", "FDR"), colnames(rna_sub))[1]
+      prot_padj_col <- intersect(c("adj.P.Val", "padj", "FDR"), colnames(prot_sub))[1]
 
       # Save concordance table
       conc_df <- data.frame(
         gene_symbol = common,
         rna_log2FC = rna_sub$log2FC,
         protein_log2FC = prot_sub$log2FC,
+        rna_padj = if (!is.na(rna_padj_col)) rna_sub[[rna_padj_col]] else rep(1, length(common)),
+        protein_padj = if (!is.na(prot_padj_col)) prot_sub[[prot_padj_col]] else rep(1, length(common)),
         concordant = same_direction,
         stringsAsFactors = FALSE
       )
       save_table(conc_df, "rna_protein_de_concordance.csv", config)
 
       # Plot
-      p <- plot_de_concordance(rna_sub$log2FC, prot_sub$log2FC, "RNA", "Protein")
-      save_plot(p, "rna_protein_de_scatter", config, width = 8, height = 8)
+      p <- plot_de_concordance(conc_df, "RNA", "Protein")
+      save_plot(p, "rna_protein_de_scatter.png", config, width = 9, height = 8)
     }
   }
 
   # Summary of significant features per omics
   sig_summary <- lapply(de_tables, function(dt) {
     padj_col <- intersect(c("adj.P.Val", "padj", "FDR"), colnames(dt))[1]
-    if (is.na(padj_col)) return(NULL)
+    if (is.na(padj_col)) {
+      return(NULL)
+    }
 
     n_sig <- sum(dt[[padj_col]] < 0.05, na.rm = TRUE)
     n_up <- sum(dt[[padj_col]] < 0.05 & dt$log2FC > 0, na.rm = TRUE)
@@ -281,26 +297,61 @@ analyze_de_concordance <- function(harmonized_omics, config) {
 }
 
 #' Plot DE concordance scatter
-plot_de_concordance <- function(fc1, fc2, label1, label2) {
-  df <- data.frame(fc1 = fc1, fc2 = fc2)
-  df <- df[complete.cases(df), ]
+plot_de_concordance <- function(df, label1, label2) {
+  # clean data
+  df <- df[complete.cases(df[, c("rna_log2FC", "protein_log2FC")]), ]
+
+  # Define significance categories
+  fdr_cutoff <- 0.05
+  df$significance <- "None"
+  df$significance[df$rna_padj < fdr_cutoff & df$protein_padj >= fdr_cutoff] <- paste0(label1, " only")
+  df$significance[df$rna_padj >= fdr_cutoff & df$protein_padj < fdr_cutoff] <- paste0(label2, " only")
+  df$significance[df$rna_padj < fdr_cutoff & df$protein_padj < fdr_cutoff] <- "Both"
+
+  df$significance <- factor(df$significance, levels = c("Both", paste0(label1, " only"), paste0(label2, " only"), "None"))
 
   # Calculate correlation
-  r <- cor(df$fc1, df$fc2)
+  r <- cor(df$rna_log2FC, df$protein_log2FC)
 
-  ggplot2::ggplot(df, ggplot2::aes(x = fc1, y = fc2)) +
-    ggplot2::geom_point(alpha = 0.5, size = 1.5) +
-    ggplot2::geom_smooth(method = "lm", se = TRUE, color = "red") +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  # Genes to label (top significant and discordant/concordant)
+  top_labels <- df[df$significance != "None", ]
+  if (nrow(top_labels) > 0) {
+    top_labels$abs_sum_fc <- abs(top_labels$rna_log2FC) + abs(top_labels$protein_log2FC)
+    top_labels <- top_labels[order(top_labels$abs_sum_fc, decreasing = TRUE), ]
+    top_labels <- head(top_labels, 20)
+  }
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = rna_log2FC, y = protein_log2FC, color = significance)) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    ggplot2::geom_point(alpha = 0.6, size = 1.5) +
+    ggplot2::geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dotted", size = 0.5) +
+    ggplot2::scale_color_manual(values = c(
+      "Both" = "#e41a1c",
+      "RNA only" = "#377eb8",
+      "Protein only" = "#4daf4a",
+      "None" = "gray80"
+    )) +
     ggplot2::theme_minimal() +
     ggplot2::labs(
       title = paste0(label1, " vs ", label2, " Fold Change Concordance"),
-      subtitle = paste0("r = ", round(r, 3), ", n = ", nrow(df), " features"),
+      subtitle = paste0("Pearson r = ", round(r, 3), ", n = ", nrow(df), " features"),
       x = paste0(label1, " log2(FC)"),
-      y = paste0(label2, " log2(FC)")
-    ) +
-    ggplot2::coord_fixed()
+      y = paste0(label2, " log2(FC)"),
+      color = "Significance (FDR < 0.05)"
+    )
+
+  if (requireNamespace("ggrepel", quietly = TRUE) && nrow(top_labels) > 0) {
+    p <- p + ggrepel::geom_text_repel(
+      data = top_labels,
+      ggplot2::aes(label = gene_symbol),
+      size = 3,
+      max.overlaps = 20,
+      show.legend = FALSE
+    )
+  }
+
+  p
 }
 
 #' Analyze concordance from integration results
@@ -334,8 +385,10 @@ analyze_integration_concordance <- function(integration_results, harmonized, con
           view_cor <- cor(r2_1, r2_2)
           view_cors[[paste(v1, v2, sep = "_")]] <- view_cor
 
-          log_message("MOFA variance concordance (", v1, " vs ", v2, "): ",
-                     round(view_cor, 3))
+          log_message(
+            "MOFA variance concordance (", v1, " vs ", v2, "): ",
+            round(view_cor, 3)
+          )
         }
       }
 
@@ -369,7 +422,8 @@ summarize_concordance <- function(concordance_results, config) {
   # RNA-Protein expression concordance
   if (!is.null(concordance_results$rna_protein)) {
     rp <- concordance_results$rna_protein
-    summary_lines <- c(summary_lines,
+    summary_lines <- c(
+      summary_lines,
       "",
       "RNA-Protein Expression Concordance:",
       paste0("  - Genes compared: ", rp$summary$n_genes),
@@ -382,7 +436,8 @@ summarize_concordance <- function(concordance_results, config) {
   # DE concordance
   if (!is.null(concordance_results$de_concordance$pairwise$rna_protein)) {
     de_rp <- concordance_results$de_concordance$pairwise$rna_protein
-    summary_lines <- c(summary_lines,
+    summary_lines <- c(
+      summary_lines,
       "",
       "RNA-Protein Differential Concordance:",
       paste0("  - Features compared: ", de_rp$n_common),

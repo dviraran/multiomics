@@ -44,9 +44,44 @@ preprocess_transcriptomics <- function(rna_data, metadata, config) {
 
   if (rna_data$mode == "preprocessed") {
     log_message("Using preprocessed RNA data")
+    mat <- rna_data$matrix
+    de_table <- rna_data$de_table
+
+    de_table <- standardize_de_table(de_table, config)
+
+    # If DE table is missing, run simple Limma analysis
+    if (is.null(de_table)) {
+      log_message("Preprocessed RNA: No DE table provided. Running Limma...")
+      sample_col <- config$global$sample_id_column
+      common_samples <- intersect(colnames(mat), metadata[[sample_col]])
+      if (length(common_samples) > 0) {
+        mat_aligned <- mat[, common_samples]
+        meta_aligned <- metadata[match(common_samples, metadata[[sample_col]]), ]
+
+        # Check if data needs log transformation
+        is_log_transformed <- isTRUE(tc$preprocessed$is_log_transformed == "yes")
+        if (!is_log_transformed) {
+          # Check if data looks like raw counts/abundance
+          max_val <- max(mat_aligned, na.rm = TRUE)
+          log_message("Applying log2 transformation to preprocessed RNA data (max value: ", round(max_val), ")")
+          mat_aligned <- log2(mat_aligned + 1)
+          mat <- log2(mat + 1) # Also transform the full matrix
+        }
+
+        de_table <- run_limma_da(mat_aligned, meta_aligned, config, "gene")
+        if (!is.null(de_table)) {
+          # Fix column names to match expected RNA outcome
+          colnames(de_table)[colnames(de_table) == "feature_id"] <- "gene_id"
+          colnames(de_table)[colnames(de_table) == "avgExpr"] <- "baseMean"
+          colnames(de_table)[colnames(de_table) == "adj.P.Val"] <- "padj"
+          save_table(de_table, "rna_de_results.csv", config)
+        }
+      }
+    }
+
     return(list(
-      normalized_matrix = rna_data$matrix,
-      de_table = rna_data$de_table,
+      normalized_matrix = mat,
+      de_table = de_table,
       mapping = rna_data$mapping,
       gmt = rna_data$gmt
     ))
@@ -188,6 +223,93 @@ run_limma_voom <- function(counts, metadata, config) {
   list(normalized = v$E, de_table = de_table)
 }
 
+#' Standardize wide-format DE table to long format
+standardize_de_table <- function(df, config) {
+  if (is.null(df)) {
+    return(NULL)
+  }
+
+  # Standard column names expected by the pipeline:
+  # feature_id, log2FC, pvalue, adj.P.Val, contrast
+
+  # Identify ID column (ID or Wormbase_id or feature_id)
+  id_col <- NULL
+  if ("ID" %in% colnames(df)) {
+    id_col <- "ID"
+  } else if ("feature_id" %in% colnames(df)) {
+    id_col <- "feature_id"
+  } else if ("gene_id" %in% colnames(df)) {
+    id_col <- "gene_id"
+  } else if ("feature" %in% colnames(df)) id_col <- "feature"
+
+  if (is.null(id_col)) {
+    # If no ID col found, assume first column
+    id_col <- colnames(df)[1]
+  }
+
+  # Current active contrasts from config
+  contrasts_spec <- config$design$contrasts
+  all_results <- list()
+
+  for (contrast_str in contrasts_spec) {
+    # Pattern: [Contrast]_ratio, [Contrast]_p.val, [Contrast]_p.adj
+    parts <- strsplit(trimws(contrast_str), "\\s*-\\s*")[[1]]
+    if (length(parts) == 2) {
+      prefix <- paste0(parts[1], "_vs_", parts[2])
+      # Handle potential "X" prefix added by some readers for numeric start names
+      prefixes <- c(prefix, paste0("X", prefix))
+
+      for (p in prefixes) {
+        ratio_col <- paste0(p, "_ratio")
+        pval_col <- paste0(p, "_p.val")
+        padj_col <- paste0(p, "_p.adj")
+
+        if (ratio_col %in% colnames(df)) {
+          res <- data.frame(
+            feature_id = as.character(df[[id_col]]),
+            log2FC = as.numeric(df[[ratio_col]]),
+            pvalue = if (pval_col %in% colnames(df)) as.numeric(df[[pval_col]]) else NA,
+            adj.P.Val = if (padj_col %in% colnames(df)) as.numeric(df[[padj_col]]) else NA,
+            contrast = contrast_str,
+            stringsAsFactors = FALSE
+          )
+
+          # Add avgExpr/baseMean if available
+          avg_patterns <- c("_centered", "_baseMean", "_AveExpr")
+          for (pat in avg_patterns) {
+            avg_col <- paste0(p, pat)
+            if (avg_col %in% colnames(df)) {
+              res$avgExpr <- as.numeric(df[[avg_col]])
+              break
+            }
+          }
+          if (!"avgExpr" %in% colnames(res)) res$avgExpr <- NA
+
+          all_results[[contrast_str]] <- res
+          break
+        }
+      }
+    }
+  }
+
+  if (length(all_results) > 0) {
+    log_message("Standardized wide-format DE table for contrasts: ", paste(names(all_results), collapse = ", "))
+    final_df <- do.call(rbind, all_results)
+    rownames(final_df) <- NULL
+    return(final_df)
+  }
+
+  # Check if it's already in the correct format but needs consistent naming
+  if ("log2FC" %in% colnames(df)) {
+    if (!"feature_id" %in% colnames(df) && !is.null(id_col)) {
+      df$feature_id <- df[[id_col]]
+    }
+    return(df)
+  }
+
+  return(df)
+}
+
 #' Preprocess proteomics
 preprocess_proteomics <- function(prot_data, metadata, config) {
   log_message("Preprocessing proteomics...")
@@ -195,9 +317,27 @@ preprocess_proteomics <- function(prot_data, metadata, config) {
 
   if (prot_data$mode == "preprocessed") {
     log_message("Using preprocessed proteomics data")
+    mat <- prot_data$matrix
+    da_table <- standardize_de_table(prot_data$da_table, config)
+
+    # If DA table is missing, run Limma
+    if (is.null(da_table)) {
+      log_message("Preprocessed Proteomics: No DA table provided. Running Limma...")
+      sample_col <- config$global$sample_id_column
+      common_samples <- intersect(colnames(mat), metadata[[sample_col]])
+      if (length(common_samples) > 0) {
+        mat_aligned <- mat[, common_samples]
+        meta_aligned <- metadata[match(common_samples, metadata[[sample_col]]), ]
+        da_table <- run_limma_da(mat_aligned, meta_aligned, config, "protein")
+        if (!is.null(da_table)) {
+          save_table(da_table, "prot_da_results.csv", config)
+        }
+      }
+    }
+
     return(list(
-      normalized_matrix = prot_data$matrix,
-      da_table = prot_data$da_table,
+      normalized_matrix = mat,
+      da_table = da_table,
       mapping = prot_data$mapping
     ))
   }
@@ -274,9 +414,27 @@ preprocess_metabolomics <- function(metab_data, metadata, config) {
 
   if (metab_data$mode == "preprocessed") {
     log_message("Using preprocessed metabolomics data")
+    mat <- metab_data$matrix
+    da_table <- metab_data$da_table
+
+    # If DA table is missing, run Limma
+    if (is.null(da_table)) {
+      log_message("Preprocessed Metabolomics: No DA table provided. Running Limma...")
+      sample_col <- config$global$sample_id_column
+      common_samples <- intersect(colnames(mat), metadata[[sample_col]])
+      if (length(common_samples) > 0) {
+        mat_aligned <- mat[, common_samples]
+        meta_aligned <- metadata[match(common_samples, metadata[[sample_col]]), ]
+        da_table <- run_limma_da(mat_aligned, meta_aligned, config, "metabolite")
+        if (!is.null(da_table)) {
+          save_table(da_table, "metab_da_results.csv", config)
+        }
+      }
+    }
+
     return(list(
-      normalized_matrix = metab_data$matrix,
-      da_table = metab_data$da_table,
+      normalized_matrix = mat,
+      da_table = da_table,
       feature_metadata = metab_data$feature_metadata,
       annotation = metab_data$annotation,
       pathway_mapping = metab_data$pathway_mapping,

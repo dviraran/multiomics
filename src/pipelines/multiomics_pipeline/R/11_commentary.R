@@ -17,15 +17,14 @@
 #' @param config Pipeline configuration
 #' @return A tibble with figure paths and metadata
 build_figures_table <- function(mae_data,
-                                 foundational_results = NULL,
-                                 mechanistic_results = NULL,
-                                 integration_results = NULL,
-                                 concordance_results = NULL,
-                                 enrichment_results = NULL,
-                                 consensus_results = NULL,
-                                 stability_results = NULL,
-                                 config) {
-
+                                foundational_results = NULL,
+                                mechanistic_results = NULL,
+                                integration_results = NULL,
+                                concordance_results = NULL,
+                                enrichment_results = NULL,
+                                consensus_results = NULL,
+                                stability_results = NULL,
+                                config) {
   log_message("Building figures metadata table...")
 
   output_dir <- config$output$output_dir
@@ -297,16 +296,15 @@ build_figures_table <- function(mae_data,
 #' @param output_dir Directory to save commentary JSON files
 #' @return A tibble with figure IDs and commentary
 generate_all_commentary <- function(figures_tbl,
-                                     config,
-                                     mae_data,
-                                     foundational_results = NULL,
-                                     mechanistic_results = NULL,
-                                     integration_results = NULL,
-                                     concordance_results = NULL,
-                                     consensus_results = NULL,
-                                     stability_results = NULL,
-                                     output_dir) {
-
+                                    config,
+                                    mae_data,
+                                    foundational_results = NULL,
+                                    mechanistic_results = NULL,
+                                    integration_results = NULL,
+                                    concordance_results = NULL,
+                                    consensus_results = NULL,
+                                    stability_results = NULL,
+                                    output_dir) {
   # Check if commentary is enabled
   commentary_enabled <- config$commentary$enabled %||% FALSE
 
@@ -342,19 +340,22 @@ generate_all_commentary <- function(figures_tbl,
     context <- build_figure_context(fig, config, mae_data, integration_results, concordance_results)
 
     # Generate commentary based on backend
-    commentary <- tryCatch({
-      if (backend == "claude") {
-        run_claude_commentary(fig, context, config, output_dir)
-      } else if (backend == "openai") {
-        run_openai_commentary(fig, context, config, output_dir)
-      } else {
-        # Data-driven fallback
-        generate_fallback_commentary(fig, context, mae_data, integration_results, concordance_results, config)
+    commentary <- tryCatch(
+      {
+        if (backend == "claude") {
+          run_claude_commentary(fig, context, config, output_dir)
+        } else if (backend == "openai") {
+          run_openai_commentary(fig, context, config, output_dir)
+        } else {
+          # Data-driven fallback
+          generate_fallback_commentary(fig, context, mae_data, integration_results, concordance_results, config)
+        }
+      },
+      error = function(e) {
+        log_message("Error generating commentary for ", figure_id, ": ", e$message)
+        create_placeholder_commentary(figure_id, e$message)
       }
-    }, error = function(e) {
-      log_message("Error generating commentary for ", figure_id, ": ", e$message)
-      create_placeholder_commentary(figure_id, e$message)
-    })
+    )
 
     # Save individual JSON
     json_path <- file.path(output_dir, paste0(figure_id, ".json"))
@@ -362,7 +363,7 @@ generate_all_commentary <- function(figures_tbl,
 
     commentary_list[[figure_id]] <- list(
       figure_id = figure_id,
-      commentary_json = jsonlite::toJSON(commentary, auto_unbox = TRUE),
+      commentary_json = as.character(jsonlite::toJSON(commentary, auto_unbox = TRUE)),
       backend = backend
     )
   }
@@ -378,8 +379,10 @@ generate_all_commentary <- function(figures_tbl,
   all_commentary <- lapply(commentary_list, function(x) {
     jsonlite::fromJSON(x$commentary_json)
   })
-  write(jsonlite::toJSON(all_commentary, auto_unbox = TRUE, pretty = TRUE),
-        file.path(output_dir, "all_commentary.json"))
+  write(
+    jsonlite::toJSON(all_commentary, auto_unbox = TRUE, pretty = TRUE),
+    file.path(output_dir, "all_commentary.json")
+  )
 
   log_message("Commentary saved to: ", output_dir)
 
@@ -601,7 +604,8 @@ fallback_mofa_variance <- function(fig, context, integration_results) {
 
   if (!is.null(mofa$variance_explained)) {
     total_var <- sum(mofa$variance_explained$total)
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("Factors collectively explain approximately ", round(total_var, 1), "% of total variance.")
     )
   }
@@ -693,7 +697,8 @@ fallback_diablo_sample <- function(fig, context, integration_results) {
   )
 
   if (!is.null(context$diablo_cv_error)) {
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("Cross-validation error rate: ", round(context$diablo_cv_error * 100, 1), "%")
     )
   }
@@ -781,7 +786,8 @@ fallback_diablo_cv <- function(fig, context, integration_results) {
   )
 
   if (!is.null(context$diablo_cv_error)) {
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("Minimum CV error: ", round(context$diablo_cv_error * 100, 1), "%")
     )
   }
@@ -817,13 +823,15 @@ fallback_snf_mds <- function(fig, context, integration_results) {
   )
 
   if (!is.null(context$snf_nmi)) {
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("NMI with condition: ", round(context$snf_nmi, 3))
     )
   }
 
   if (!is.null(context$snf_n_clusters)) {
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("Number of clusters: ", context$snf_n_clusters)
     )
   }
@@ -883,7 +891,8 @@ fallback_concordance <- function(fig, context, concordance_results) {
   )
 
   if (!is.null(context$concordance_mean_cor)) {
-    observations <- c(observations,
+    observations <- c(
+      observations,
       paste0("Mean correlation: ", round(context$concordance_mean_cor, 3)),
       paste0("Number of genes compared: ", context$concordance_n_genes),
       paste0("Percentage with positive correlation: ", round(context$concordance_pct_positive, 1), "%")
