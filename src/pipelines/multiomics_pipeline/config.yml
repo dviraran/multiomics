@@ -2,62 +2,70 @@ global:
   omics_present:
   - transcriptomics
   - proteomics
-  organism: Homo sapiens
-  metadata: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_metadata.csv
+  - metabolomics
+  organism: c_elegans
+  gene_protein_mapping: data/gene_protein_mapping.csv
+  metadata: data/samples_PFOS_c_elegants.csv
   sample_id_column: sample_id
 design:
-  condition_column: condition
-  design_formula: ~ condition
-  contrasts:
-  - treated - control
-  reference_level: control
+  condition_column: Treatment
+#condition
+  design_formula: ~ Treatment
+#condition
+  contrasts: 1.56ppm - 0ppm
+
+  #- treated - control
+  reference_level: 0ppm
   batch_column: ~
 transcriptomics:
-  mode: raw
+  mode: preprocessed
   raw:
-    counts_matrix: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_rna_counts.csv
+    counts_matrix: ~
     mapping_file: ~
     gmt_file: ~
   preprocessed:
-    normalized_matrix: ~
-    de_table: ~
+    normalized_matrix: data/abundance_RNA_PFOS_c_elegants.csv
+    is_log_transformed: no
+    da_table: data/de_rna_PFOS_c_elegants.csv
   processing:
     min_counts: 10
     min_samples: 3
     normalization: vst
     de_method: DESeq2
 proteomics:
-  mode: raw
+  mode: preprocessed
   raw:
-    intensity_matrix: /home/ozsol/multiomics/src/pipelines/multiomics_pipeline/data/example_prot_intensity.csv
+    intensity_matrix: ~
     mapping_file: ~
     contaminants_file: ~
   preprocessed:
-    normalized_matrix: ~
-    da_table: ~
+    normalized_matrix: data/abundance_protein_PFOS_c_elegants.csv
+    is_log_transformed: yes
+    da_table: data/de_protein_PFOS_c_elegants.csv
   processing:
     zeros_as_na: yes
     log_transform: yes
     normalization: median
     min_presence: 0.5
-    imputation: half_min
+    imputation: qrilc
 metabolomics:
-  mode: raw
+  mode: preprocessed
   raw:
-    feature_matrix: data/metab_feature_matrix.csv
+    feature_matrix: 
     feature_metadata: ~
     annotation_table: ~
     pathway_mapping: ~
     gmt_file: ~
   preprocessed:
-    normalized_matrix: ~
-    da_table: ~
+    normalized_matrix: data/abundance_metabo_PFOS_c_elegants.csv
+    is_log_transformed: no
+  da_table: ~
   processing:
     zeros_as_na: yes
     transform: log2
-    normalization: PQN
+    normalization: sum_columns
     min_presence: 0.3
-    imputation: half_min
+    imputation: qrilc
 harmonization:
   sample_mode: intersection
   duplicate_strategy: keep_max_mean
@@ -76,8 +84,8 @@ feature_selection:
     fdr_threshold: 0.05
 integration:
   methods:
-  - MOFA2
   - DIABLO
+  - spls
   mofa2:
     num_factors: 10
     convergence_mode: fast
@@ -97,7 +105,7 @@ integration:
     keepX: 50
     keepY: 50
 ms_helios:
-  run_ms_helios: yes
+  run_ms_helios: no
   compute_links: yes
   tracks:
     transcriptomics:
@@ -108,14 +116,14 @@ ms_helios:
       cluster: yes
 enrichment:
   run_enrichment: yes
-  methods: ora
-  ora_pvalue: 0.05
+  methods: gsea
+  ora_pvalue: 0.1
   min_set_size: 10
   max_set_size: 500
   combine_method: fisher
   multigsea:
     run_multigsea: yes
-    pvalue_threshold: 0.05
+    pvalue_threshold: 0.1
     correlation_method: pearson
 output:
   output_dir: outputs
@@ -126,7 +134,8 @@ output:
 commentary:
   enabled: yes
   backend: none
-  claude_model: claude-sonnet-4-20250514
+  claude_model: claude-sonnet-4.5-20250514
+  #claude-sonnet-4-20250514
   openai_model: gpt-4o
   max_tokens: 1500
   max_retries: 2
