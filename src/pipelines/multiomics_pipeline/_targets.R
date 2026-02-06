@@ -68,7 +68,7 @@ required_packages <- c(
   "DESeq2", "limma", "edgeR",
   "SummarizedExperiment", "MultiAssayExperiment", "S4Vectors",
   "MOFA2", "mixOmics", "SNFtool",
-  "clusterProfiler", "org.Hs.eg.db", "fgsea",
+  "clusterProfiler", "org.Hs.eg.db", "org.Ce.eg.db", "fgsea",
   "ggplot2", "patchwork", "ComplexHeatmap", "circlize"
 )
 
@@ -79,6 +79,9 @@ library(targets)
 library(tarchetypes)
 
 # Source all R functions
+# r_files <- sort(list.files("R", pattern = "\\.[Rr]$", full.names = TRUE, recursive = TRUE))#
+# invisible(lapply(r_files, source))
+
 source("R/00_utils.R")
 source("R/01_ingestion.R")
 source("R/02_preprocessing.R")
@@ -96,7 +99,7 @@ source("R/09c_stability_analysis.R") # NEW: Bootstrap stability
 source("R/10_enrichment.R")
 source("R/13_multigsea_plots.R")
 source("R/11_commentary.R")
-source("R/12_ms_helios.R")
+source("R/14_rna_protein_correlation.R")
 
 # Set target options
 tar_option_set(
@@ -108,7 +111,7 @@ tar_option_set(
     # Integration methods (optional)
     # "MOFA2", "mixOmics", "SNFtool",
     # Enrichment (optional)
-    "clusterProfiler", "org.Hs.eg.db", "fgsea",
+    "clusterProfiler", "org.Hs.eg.db", "org.Ce.eg.db", "fgsea",
     # Visualization
     "ggplot2", "patchwork", "ComplexHeatmap", "circlize", "ggrepel", "pathview"
   ),
@@ -137,6 +140,14 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
+  # ID Mapping Generation
+  # ---------------------------------------------------------------------------
+  tar_target(
+    name = gene_protein_mapping,
+    command = generate_id_mapping(config, output_dir = file.path(config$output$output_dir, "tables"))
+  ),
+
+  # ---------------------------------------------------------------------------
   # Per-Omics Preprocessing
   # ---------------------------------------------------------------------------
   tar_target(
@@ -149,7 +160,7 @@ list(
   # ---------------------------------------------------------------------------
   tar_target(
     name = harmonized_data,
-    command = harmonize_identifiers(preprocessed_data, config)
+    command = harmonize_identifiers(preprocessed_data, config, gene_protein_mapping)
   ),
 
   # ---------------------------------------------------------------------------
@@ -279,12 +290,18 @@ list(
     )
   ),
 
+  # Availability flags for report
+  tar_target(mofa_available, !is.null(mofa_results)),
+  tar_target(diablo_available, !is.null(diablo_results)),
+  tar_target(snf_available, !is.null(snf_results)),
+  tar_target(rp_available, !is.null(concordance_results$rna_protein)),
+
   # ---------------------------------------------------------------------------
   # Cross-Omics Concordance
   # ---------------------------------------------------------------------------
   tar_target(
     name = concordance_results,
-    command = run_concordance_analysis(mae_data, integration_results, config)
+    command = rna_protein_correlation(mae_data, config)
   ),
 
   # ---------------------------------------------------------------------------
@@ -305,6 +322,12 @@ list(
   tar_target(
     name = multigsea_pathview,
     command = run_multigsea_pathview(enrichment_results, mae_data, config)
+  ),
+
+  # Consensus Pathview (NEW)
+  tar_target(
+    name = consensus_pathview,
+    command = run_consensus_pathview(enrichment_results, mae_data, config)
   ),
 
 
@@ -456,7 +479,11 @@ list(
       integration_results = integration_results,
       concordance_results = concordance_results,
       enrichment_results = enrichment_results,
-      commentary_tbl = commentary_tbl
+      commentary_tbl = commentary_tbl,
+      mofa_available = mofa_available,
+      diablo_available = diablo_available,
+      snf_available = snf_available,
+      rp_available = rp_available
     )
   )
 )

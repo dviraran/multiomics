@@ -115,7 +115,7 @@ run_multiomics_enrichment <- function(mae_data, integration_results, config) {
   results
 }
 
-#' Run gene-based enrichment (ORA)
+#' Run gene-based enrichment (ORA) with multiple collections support
 run_gene_enrichment <- function(de_table, gene_col, gmt, omic_name, config) {
   log_message("Running gene enrichment for ", omic_name, "...")
 
@@ -123,15 +123,26 @@ run_gene_enrichment <- function(de_table, gene_col, gmt, omic_name, config) {
   pval_thresh <- enrich_config$ora_pvalue %||% 0.05
   min_size <- enrich_config$min_set_size %||% 10
   max_size <- enrich_config$max_set_size %||% 500
+  top_n_terms <- enrich_config$top_n_terms %||% c(10, 20, 50)
 
   # Get significant genes
   padj_col <- intersect(c("adj.P.Val", "padj", "FDR"), colnames(de_table))[1]
   if (is.na(padj_col)) {
-    log_message("No adjusted p-value column found in DE table")
-    return(NULL)
+    log_message("  Warning: No adjusted p-value column found. Trying unadjusted p-values...")
+    pval_col <- intersect(c("pvalue", "P.Value", "p.value"), colnames(de_table))[1]
+    if (!is.na(pval_col)) {
+      log_message("  Applying BH correction to unadjusted p-values")
+      de_table$padj_computed <- p.adjust(de_table[[pval_col]], method = "BH")
+      padj_col <- "padj_computed"
+    } else {
+      log_message("  ERROR: No p-value columns found in DE table. Skipping enrichment.")
+      return(NULL)
+    }
   }
 
-  sig_genes <- de_table[[gene_col]][de_table[[padj_col]] < 0.05]
+  # Use configurable FDR threshold (defined at line 126)
+  fdr_thresh <- enrich_config$fdr_threshold %||% 0.05
+  sig_genes <- de_table[[gene_col]][de_table[[padj_col]] < fdr_thresh]
   sig_genes <- unique(sig_genes[!is.na(sig_genes)])
   all_genes <- unique(de_table[[gene_col]][!is.na(de_table[[gene_col]])])
 
@@ -142,7 +153,237 @@ run_gene_enrichment <- function(de_table, gene_col, gmt, omic_name, config) {
     return(NULL)
   }
 
-  # Load gene sets
+  # Check if collections are defined in config
+  collections <- enrich_config$collections
+  if (is.null(collections) || length(collections) == 0) {
+    # Fall back to legacy behavior (GO + KEGG)
+    return(run_gene_enrichment_legacy(de_table, gene_col, gmt, omic_name, config))
+  }
+
+  # Run enrichment for each collection
+  all_results <- list()
+
+  for (coll in collections) {
+    coll_name <- coll$name
+    log_message("  Running enrichment for collection: ", coll_name)
+
+    coll_result <- run_enrichment_for_collection(
+      sig_genes, all_genes, coll, omic_name, config,
+      pval_thresh, min_size, max_size, top_n_terms
+    )
+
+    if (!is.null(coll_result)) {
+      all_results[[coll_name]] <- coll_result
+    }
+  }
+
+  return(all_results)
+}
+
+#' Run enrichment for a specific collection
+run_enrichment_for_collection <- function(sig_genes, all_genes, collection, omic_name,
+                                          config, pval_thresh, min_size, max_size, top_n_terms) {
+  coll_name <- collection$name
+  coll_type <- collection$type
+
+  enrich_result <- NULL
+
+  # Determine organism and OrgDb
+  organism_name <- config$global$organism %||% "human"
+  org_db <- NULL
+  kegg_code <- NULL
+
+  if (organism_name == "c_elegans") {
+    if (requireNamespace("org.Ce.eg.db", quietly = TRUE)) {
+      org_db <- org.Ce.eg.db::org.Ce.eg.db
+      kegg_code <- "cel"
+      species_code <- "cel"
+    }
+  } else {
+    if (requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+      org_db <- org.Hs.eg.db::org.Hs.eg.db
+      kegg_code <- "hsa"
+      species_code <- "hsa"
+    }
+  }
+
+  # Determine keyType
+  key_type <- "SYMBOL"
+  if (organism_name == "c_elegans") {
+    if (all(grepl("^WBGene", sig_genes))) {
+      key_type <- "WORMBASE"
+    }
+  } else if (all(grepl("^ENS", sig_genes))) {
+    key_type <- "ENSEMBL"
+  }
+
+  # Map to ENTREZID
+  gene_map <- NULL
+  universe_map <- NULL
+
+  if (!is.null(org_db) && requireNamespace("clusterProfiler", quietly = TRUE)) {
+    tryCatch({
+      gene_map <- clusterProfiler::bitr(sig_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db)
+      universe_map <- clusterProfiler::bitr(all_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db)
+    }, error = function(e) {
+      log_message("    ID mapping failed: ", e$message)
+    })
+  }
+
+  if (is.null(gene_map) || nrow(gene_map) == 0) {
+    log_message("    No genes mapped for ", coll_name)
+    return(NULL)
+  }
+
+  # Run enrichment based on collection type
+  if (coll_type == "GO") {
+    ont <- collection$ont %||% "BP"
+    tryCatch({
+      ego <- clusterProfiler::enrichGO(
+        gene = gene_map$ENTREZID,
+        universe = universe_map$ENTREZID,
+        OrgDb = org_db,
+        keyType = "ENTREZID",
+        ont = ont,
+        pAdjustMethod = "BH",
+        pvalueCutoff = pval_thresh,
+        minGSSize = min_size,
+        maxGSSize = max_size
+      )
+
+      if (!is.null(ego) && nrow(as.data.frame(ego)) > 0) {
+        enrich_result <- as.data.frame(ego)
+        enrich_result$type <- "GO"
+        enrich_result$collection <- coll_name
+      }
+    }, error = function(e) {
+      log_message("    GO enrichment failed: ", e$message)
+    })
+
+  } else if (coll_type == "KEGG") {
+    tryCatch({
+      ekegg <- clusterProfiler::enrichKEGG(
+        gene = gene_map$ENTREZID,
+        universe = universe_map$ENTREZID,
+        organism = kegg_code,
+        pvalueCutoff = pval_thresh,
+        minGSSize = min_size,
+        maxGSSize = max_size
+      )
+
+      if (!is.null(ekegg) && nrow(as.data.frame(ekegg)) > 0) {
+        enrich_result <- as.data.frame(ekegg)
+        enrich_result$type <- "KEGG"
+        enrich_result$collection <- coll_name
+      }
+    }, error = function(e) {
+      log_message("    KEGG enrichment failed: ", e$message)
+    })
+
+  } else if (coll_type == "msigdbr") {
+    # MSigDB collections (H, C2, etc.)
+    if (!requireNamespace("msigdbr", quietly = TRUE)) {
+      log_message("    msigdbr package not available")
+      return(NULL)
+    }
+
+    category <- collection$category
+    subcategory <- collection$subcategory %||% NULL
+
+    # Determine species for msigdbr
+    msigdbr_species <- if (organism_name == "c_elegans") {
+      "Caenorhabditis elegans"
+    } else {
+      "Homo sapiens"
+    }
+
+    tryCatch({
+      # Get gene sets from msigdbr
+      if (is.null(subcategory)) {
+        m_df <- msigdbr::msigdbr(species = msigdbr_species, category = category)
+      } else {
+        m_df <- msigdbr::msigdbr(species = msigdbr_species, category = category, subcategory = subcategory)
+      }
+
+      # Convert to term2gene format
+      term2gene <- m_df[, c("gs_name", "entrez_gene")]
+
+      # Run enrichment
+      emsig <- clusterProfiler::enricher(
+        gene = gene_map$ENTREZID,
+        universe = universe_map$ENTREZID,
+        TERM2GENE = term2gene,
+        pvalueCutoff = pval_thresh,
+        minGSSize = min_size,
+        maxGSSize = max_size
+      )
+
+      if (!is.null(emsig) && nrow(as.data.frame(emsig)) > 0) {
+        enrich_result <- as.data.frame(emsig)
+        enrich_result$type <- "MSigDB"
+        enrich_result$collection <- coll_name
+      }
+    }, error = function(e) {
+      log_message("    MSigDB enrichment failed: ", e$message)
+    })
+
+  } else if (coll_type == "gmt") {
+    # Custom GMT file
+    gmt_path <- collection$path
+    if (!is.null(gmt_path) && file.exists(gmt_path)) {
+      gmt_sets <- read_gmt_file(gmt_path)
+      ora_result <- run_simple_ora(sig_genes, all_genes, gmt_sets, pval_thresh)
+      if (!is.null(ora_result) && nrow(ora_result) > 0) {
+        enrich_result <- ora_result
+        enrich_result$type <- "GMT"
+        enrich_result$collection <- coll_name
+      }
+    } else {
+      log_message("    GMT file not found: ", gmt_path)
+    }
+  }
+
+  if (is.null(enrich_result) || nrow(enrich_result) == 0) {
+    log_message("    No enrichment results for ", coll_name)
+    return(NULL)
+  }
+
+  # Save results table
+  save_table(enrich_result, paste0(omic_name, "_", coll_name, "_enrichment.csv"), config)
+
+  # Generate plots for multiple top_n values
+  for (n in top_n_terms) {
+    plot_df <- head(enrich_result, n)
+    if (nrow(plot_df) > 0) {
+      p <- plot_enrichment_dotplot(plot_df, paste0(omic_name, " - ", coll_name, " (Top ", n, ")"), n_terms = n)
+      save_plot(p, paste0(omic_name, "_", coll_name, "_dotplot_top", n, ".png"), config, width = 10, height = 8)
+    }
+  }
+
+  return(list(
+    method = coll_type,
+    collection = coll_name,
+    results = enrich_result,
+    sig_genes = sig_genes
+  ))
+}
+
+#' Legacy enrichment function (fallback when no collections defined)
+run_gene_enrichment_legacy <- function(de_table, gene_col, gmt, omic_name, config) {
+  enrich_config <- config$enrichment
+  pval_thresh <- enrich_config$ora_pvalue %||% 0.05
+  min_size <- enrich_config$min_set_size %||% 10
+  max_size <- enrich_config$max_set_size %||% 500
+
+  # Use configurable FDR threshold
+  fdr_thresh <- enrich_config$fdr_threshold %||% 0.05
+  padj_col <- intersect(c("adj.P.Val", "padj", "FDR"), colnames(de_table))[1]
+
+  sig_genes <- de_table[[gene_col]][de_table[[padj_col]] < fdr_thresh]
+  sig_genes <- unique(sig_genes[!is.na(sig_genes)])
+  all_genes <- unique(de_table[[gene_col]][!is.na(de_table[[gene_col]])])
+
+  # Load gene sets from GMT
   gene_sets <- NULL
 
   # Try custom GMT first
@@ -150,7 +391,7 @@ run_gene_enrichment <- function(de_table, gene_col, gmt, omic_name, config) {
     gene_sets <- gmt
     log_message("  Using custom GMT: ", length(gene_sets), " gene sets")
   }
-  # Try clusterProfiler for GO/KEGG
+  # Try clusterProfiler for GO/KEGG (legacy path)
   else if (requireNamespace("clusterProfiler", quietly = TRUE) &&
     requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
     log_message("  Running enrichment via clusterProfiler...")
@@ -924,6 +1165,30 @@ plot_rna_protein_enrichment_scatter <- function(rna_results, prot_results, confi
       return(NULL)
     }
   )
+}
+
+#' Read GMT file
+read_gmt_file <- function(gmt_path) {
+  if (!file.exists(gmt_path)) {
+    return(NULL)
+  }
+
+  lines <- readLines(gmt_path)
+  gene_sets <- list()
+
+  for (line in lines) {
+    parts <- strsplit(line, "\t")[[1]]
+    if (length(parts) < 3) next
+
+    set_name <- parts[1]
+    # parts[2] is typically description, skip it
+    genes <- parts[3:length(parts)]
+    genes <- genes[nchar(genes) > 0]  # Remove empty strings
+
+    gene_sets[[set_name]] <- genes
+  }
+
+  return(gene_sets)
 }
 
 #' Plot enrichment dotplot

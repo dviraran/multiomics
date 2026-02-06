@@ -77,6 +77,25 @@ select_features_single_omics <- function(mat, da_table, strategy, top_n_variance
     id_col <- intersect(c("feature_id", "gene_id", "protein_id"),
                         colnames(da_table))[1]
 
+    # Fallback: if no adjusted p-value, try unadjusted and apply BH correction
+    if (is.na(padj_col)) {
+      log_message("  Warning: No adjusted p-value column found. Checking for 'pvalue'...")
+      pval_col <- intersect(c("pvalue", "P.Value", "p.value"), colnames(da_table))[1]
+      if (!is.na(pval_col)) {
+        log_message("  Using unadjusted p-values (applying BH correction)")
+        da_table$padj_computed <- p.adjust(da_table[[pval_col]], method = "BH")
+        padj_col <- "padj_computed"
+      } else {
+        log_message("  ERROR: No p-value columns found. Cannot filter significant features.")
+      }
+    }
+
+    # Fallback for ID column
+    if (is.na(id_col)) {
+      log_message("  Warning: No standard ID column. Using first column as feature ID.")
+      id_col <- colnames(da_table)[1]
+    }
+
     if (!is.na(padj_col) && !is.na(id_col)) {
       sig_idx <- which(da_table[[padj_col]] < fdr_threshold)
       sig_features <- unique(da_table[[id_col]][sig_idx])

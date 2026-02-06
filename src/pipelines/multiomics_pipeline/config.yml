@@ -121,6 +121,23 @@ enrichment:
   min_set_size: 10
   max_set_size: 500
   combine_method: fisher
+  use_kegg: yes
+  # Multiple gene set collections for enrichment
+  collections:
+    - name: "GO_BP"
+      type: "GO"
+      ont: "BP"
+    - name: "KEGG"
+      type: "KEGG"
+    - name: "Hallmark"
+      type: "msigdbr"
+      category: "H"
+    - name: "Curated_Pathways"
+      type: "msigdbr"
+      category: "C2"
+      subcategory: "CP:KEGG"
+  # Top N terms to display in plots
+  top_n_terms: [10, 20, 50]
   multigsea:
     run_multigsea: yes
     pvalue_threshold: 0.1

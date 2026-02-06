@@ -277,7 +277,16 @@ cat(paste0("- ", omics_present, collapse = "\n"))
 mae_summary_file <- file.path(output_dir, "tables", "mae_summary.csv")
 if (file.exists(mae_summary_file)) {
   mae_summary <- read.csv(mae_summary_file)
-  kable(mae_summary, caption = "MultiAssayExperiment Summary")
+  DT::datatable(mae_summary,
+    caption = "MultiAssayExperiment Summary",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    ))
 }
 ```
 
@@ -289,7 +298,16 @@ if (file.exists(mae_summary_file)) {
 alignment_file <- file.path(output_dir, "tables", "sample_alignment.csv")
 if (file.exists(alignment_file)) {
   alignment <- read.csv(alignment_file)
-  kable(head(alignment, 20), caption = "Sample Alignment Across Omics")
+  DT::datatable(alignment,
+    caption = "Sample Alignment Across Omics",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 20
+    ))
 }
 ```
 
@@ -306,7 +324,16 @@ if (condition_col %in% colnames(metadata)) {
     Condition = names(tbl),
     Count = as.numeric(tbl)
   )
-  kable(tbl_df, caption = "Sample Distribution by Condition")
+  DT::datatable(tbl_df,
+    caption = "Sample Distribution by Condition",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    ))
 }
 ```
 
@@ -316,7 +343,16 @@ if (condition_col %in% colnames(metadata)) {
 fs_file <- file.path(output_dir, "tables", "feature_selection_summary.csv")
 if (file.exists(fs_file)) {
   fs_summary <- read.csv(fs_file)
-  kable(fs_summary, caption = "Features Selected for Integration")
+  DT::datatable(fs_summary,
+    caption = "Features Selected for Integration",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    ))
 }
 ```
 
@@ -335,7 +371,16 @@ cat("### Variance Explained\n\n")
 var_file <- file.path(output_dir, "tables", "mofa_variance_explained.csv")
 if (file.exists(var_file)) {
   var_df <- read.csv(var_file)
-  kable(var_df, digits = 2, caption = "Variance Explained per Factor per View (%)")
+  print(htmltools::tagList(DT::datatable(var_df,
+    caption = "Variance Explained per Factor per View (%)",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    )) %>% DT::formatRound(columns = 1:ncol(var_df), digits = 2)))
 }
 ```
 
@@ -363,7 +408,16 @@ assoc_file <- file.path(output_dir, "tables", "mofa_factor_associations.csv")
 if (file.exists(assoc_file)) {
   assoc_df <- read.csv(assoc_file)
   cat("\n### Factor-Phenotype Associations\n\n")
-  kable(assoc_df, digits = 4, caption = "MOFA Factor Associations with Condition")
+  print(htmltools::tagList(DT::datatable(assoc_df,
+    caption = "MOFA Factor Associations with Condition",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    )) %>% DT::formatRound(columns = 1:ncol(assoc_df), digits = 4)))
 }
 ```
 
@@ -380,7 +434,16 @@ cat("### Selected Features\n\n")
 selected_file <- file.path(output_dir, "tables", "diablo_selected_features_summary.csv")
 if (file.exists(selected_file)) {
   selected_df <- read.csv(selected_file)
-  kable(selected_df, caption = "Features Selected by DIABLO")
+  print(htmltools::tagList(DT::datatable(selected_df,
+    caption = "Features Selected by DIABLO",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    ))))
 }
 ```
 
@@ -400,7 +463,16 @@ cv_file <- file.path(output_dir, "tables", "diablo_cv_error_rates.csv")
 if (file.exists(cv_file)) {
   cv_df <- read.csv(cv_file)
   cat("\n### Cross-Validation Performance\n\n")
-  kable(cv_df, digits = 3, caption = "DIABLO CV Error Rates")
+  print(htmltools::tagList(DT::datatable(cv_df,
+    caption = "DIABLO CV Error Rates",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 10
+    )) %>% DT::formatRound(columns = 1:ncol(cv_df), digits = 3)))
 }
 ```
 
@@ -416,7 +488,16 @@ cat("### Cluster Assignments\n\n")
 cluster_file <- file.path(output_dir, "tables", "snf_clusters.csv")
 if (file.exists(cluster_file)) {
   cluster_df <- read.csv(cluster_file)
-  kable(head(cluster_df, 20), caption = "SNF Cluster Assignments")
+  print(htmltools::tagList(DT::datatable(cluster_df,
+    caption = "SNF Cluster Assignments",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      pageLength = 20
+    ))))
 
   # NMI if available
   if (!is.null(integration_results$snf$nmi)) {
@@ -462,7 +543,16 @@ summary_df <- data.frame(
     rp$summary$n_significant
   )
 )
-kable(summary_df, caption = "RNA-Protein Expression Concordance Summary")
+DT::datatable(summary_df,
+  caption = "RNA-Protein Expression Concordance Summary",
+  rownames = FALSE,
+  extensions = 'Buttons',
+  options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    scrollX = TRUE,
+    paging = FALSE
+  ))
 ```
 
 ```{r rp-plot, eval=isTRUE(get0("rp_available")), fig.cap="RNA-Protein Correlation Distribution"}
@@ -513,21 +603,172 @@ cat(render_commentary("rna_protein_de_scatter", commentary_tbl))
 ## Per-Omics Enrichment {.tabset}
 
 ```{r enrichment-per-omics, results='asis'}
-for (omic in names(mae_data$harmonized_omics)) {
-  # Check for enrichment files
-  go_file <- file.path(output_dir, "tables", paste0(omic, "_GO_enrichment.csv"))
-  ora_file <- file.path(output_dir, "tables", paste0(omic, "_ORA_enrichment.csv"))
+# Get enrichment configuration
+enrich_collections <- config$enrichment$collections
+top_n_terms <- config$enrichment$top_n_terms %||% c(10, 20, 50)
 
-  if (file.exists(go_file)) {
-    cat(paste0("\n### ", tools::toTitleCase(omic), " (GO)\n\n"))
-    enrich_df <- read.csv(go_file)
-    enrich_df <- head(enrich_df[, c("Description", "GeneRatio", "pvalue", "p.adjust", "Count")], 15)
-    print(kable(enrich_df, digits = 4))
-  } else if (file.exists(ora_file)) {
-    cat(paste0("\n### ", tools::toTitleCase(omic), " (ORA)\n\n"))
-    enrich_df <- read.csv(ora_file)
-    enrich_df <- head(enrich_df[, c("term", "overlap", "term_size", "pvalue", "padj")], 15)
-    print(kable(enrich_df, digits = 4))
+for (omic in names(mae_data$harmonized_omics)) {
+  cat(paste0("\n### ", tools::toTitleCase(omic), " {.tabset}\n\n"))
+
+  # If collections are defined, loop through them
+  if (!is.null(enrich_collections) && length(enrich_collections) > 0) {
+    for (i in seq_along(enrich_collections)) {
+      coll <- enrich_collections[[i]]
+      coll_name <- coll$name
+
+      cat(paste0("\n#### ", coll_name, "\n\n"))
+
+      # Check for enrichment files
+      enrich_file <- file.path(output_dir, "tables", paste0(omic, "_", coll_name, "_enrichment.csv"))
+
+      if (file.exists(enrich_file)) {
+        # Read enrichment data
+        enrich_df <- read.csv(enrich_file)
+
+        # Create interactive plot switcher
+        # Find available plot files
+        plot_files <- list()
+        plot_data_map <- list()
+
+        for (n in top_n_terms) {
+          plot_path <- file.path(output_dir, "plots", paste0(omic, "_", coll_name, "_dotplot_top", n, ".png"))
+          if (file.exists(plot_path)) {
+            plot_files[[as.character(n)]] <- plot_path
+            plot_data_map[[as.character(n)]] <- knitr::image_uri(plot_path)
+          }
+        }
+
+        if (length(plot_files) > 0) {
+          # Create unique ID for this plot
+          plot_id <- paste0(omic, "_", coll_name)
+          clean_plot_id <- gsub("[^a-zA-Z0-9]", "_", plot_id)
+
+          # Default plot (first available)
+          default_n <- names(plot_files)[1]
+          default_img_uri <- plot_data_map[[default_n]]
+
+          # Dropdown menu
+          cat('<div style="margin-bottom: 20px;">\n')
+          cat('<label for="', clean_plot_id, '_selector"><strong>Select number of top terms:</strong></label>\n', sep = "")
+          cat('<select id="', clean_plot_id, '_selector" onchange="updateEnrichmentPlot_', clean_plot_id, '(this.value)" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc;">\n', sep = "")
+
+          for (n in names(plot_files)) {
+            selected <- if (n == default_n) " selected" else ""
+            cat(sprintf('<option value="%s"%s>Top %s terms</option>\n', n, selected, n))
+          }
+
+          cat('</select>\n')
+          cat('</div>\n\n')
+
+          # Image container
+          cat('<div id="', clean_plot_id, '_plot_container">\n', sep = "")
+          cat(sprintf('<img id="%s_main_image" src="%s" style="width:100%%; max-width: 900px; height: auto;" alt="Enrichment Plot" />\n', clean_plot_id, default_img_uri))
+          cat('</div>\n\n')
+
+          # JavaScript for switcher
+          cat('<script>\n')
+          cat('var enrichmentImages_', clean_plot_id, ' = ', jsonlite::toJSON(plot_data_map, auto_unbox = TRUE), ';\n\n', sep = "")
+          cat('function updateEnrichmentPlot_', clean_plot_id, '(n_top) {\n', sep = "")
+          cat('  var img = document.getElementById("', clean_plot_id, '_main_image");\n', sep = "")
+          cat('  if (enrichmentImages_', clean_plot_id, ' && enrichmentImages_', clean_plot_id, '[n_top]) {\n', sep = "")
+          cat('    img.src = enrichmentImages_', clean_plot_id, '[n_top];\n', sep = "")
+          cat('  } else {\n')
+          cat('    console.log("Plot not found for n=" + n_top);\n')
+          cat('  }\n')
+          cat('}\n')
+          cat('</script>\n\n')
+        } else {
+          cat("*No enrichment plots available for this collection.*\n\n")
+        }
+
+        # Display table with DT
+        if (nrow(enrich_df) > 0) {
+          cat("\n**Enrichment Results Table:**\n\n")
+
+          # Select relevant columns
+          display_cols <- intersect(
+            c("Description", "ID", "term", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "padj", "Count", "overlap"),
+            colnames(enrich_df)
+          )
+
+          if (length(display_cols) > 0) {
+            display_df <- enrich_df[, display_cols]
+            print(htmltools::tagList(DT::datatable(display_df,
+              caption = paste0(omic, " - ", coll_name, " Enrichment"),
+              rownames = FALSE,
+              extensions = 'Buttons',
+              options = list(
+                dom = 'Bfrtip',
+                buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                scrollX = TRUE,
+                pageLength = 15
+              )) %>% DT::formatSignif(columns = grep("pvalue|padj|p.adjust", colnames(display_df)), digits = 4)))
+            cat("\n\n")
+          }
+        }
+      } else {
+        cat(sprintf("*No enrichment results found for %s in %s.*\n\n", coll_name, omic))
+      }
+    }
+  } else {
+    # Fallback to legacy behavior
+    go_file <- file.path(output_dir, "tables", paste0(omic, "_GO_enrichment.csv"))
+    kegg_file <- file.path(output_dir, "tables", paste0(omic, "_KEGG_enrichment.csv"))
+    ora_file <- file.path(output_dir, "tables", paste0(omic, "_ORA_enrichment.csv"))
+
+    if (file.exists(go_file)) {
+      cat("\n#### GO Enrichment\n\n")
+      enrich_df <- read.csv(go_file)
+      if (nrow(enrich_df) > 0) {
+        display_cols <- intersect(c("Description", "GeneRatio", "pvalue", "p.adjust", "Count"), colnames(enrich_df))
+        print(htmltools::tagList(DT::datatable(head(enrich_df[, display_cols], 20),
+          rownames = FALSE,
+          extensions = 'Buttons',
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+            scrollX = TRUE,
+            pageLength = 15
+          )) %>% DT::formatSignif(columns = grep("pvalue|p.adjust", colnames(enrich_df)), digits = 4)))
+        cat("\n\n")
+      }
+    }
+
+    if (file.exists(kegg_file)) {
+      cat("\n#### KEGG Enrichment\n\n")
+      enrich_df <- read.csv(kegg_file)
+      if (nrow(enrich_df) > 0) {
+        display_cols <- intersect(c("Description", "GeneRatio", "pvalue", "p.adjust", "Count"), colnames(enrich_df))
+        print(htmltools::tagList(DT::datatable(head(enrich_df[, display_cols], 20),
+          rownames = FALSE,
+          extensions = 'Buttons',
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+            scrollX = TRUE,
+            pageLength = 15
+          )) %>% DT::formatSignif(columns = grep("pvalue|p.adjust", colnames(enrich_df)), digits = 4)))
+        cat("\n\n")
+      }
+    }
+
+    if (file.exists(ora_file)) {
+      cat("\n#### ORA Enrichment\n\n")
+      enrich_df <- read.csv(ora_file)
+      if (nrow(enrich_df) > 0) {
+        display_cols <- intersect(c("term", "overlap", "term_size", "pvalue", "padj"), colnames(enrich_df))
+        print(htmltools::tagList(DT::datatable(head(enrich_df[, display_cols], 20),
+          rownames = FALSE,
+          extensions = 'Buttons',
+          options = list(
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+            scrollX = TRUE,
+            pageLength = 15
+          )) %>% DT::formatSignif(columns = grep("pvalue|padj", colnames(enrich_df)), digits = 4)))
+        cat("\n\n")
+      }
+    }
   }
 }
 ```
@@ -538,17 +779,43 @@ for (omic in names(mae_data$harmonized_omics)) {
 combined_file <- file.path(output_dir, "tables", "combined_enrichment.csv")
 if (file.exists(combined_file)) {
   combined_df <- read.csv(combined_file)
-  combined_df <- head(combined_df[combined_df$combined_padj < 0.1, ], 20)
 
   if (nrow(combined_df) > 0) {
-    display_cols <- c("term", "n_omics", "combined_pvalue", "combined_padj")
-    display_cols <- intersect(display_cols, colnames(combined_df))
-    kable(combined_df[, display_cols],
-      digits = 4,
-      caption = "Top Combined Multi-Omics Enriched Pathways"
-    )
+    # Display significant pathways
+    sig_combined <- combined_df[combined_df$combined_padj < 0.1, ]
+
+    if (nrow(sig_combined) > 0) {
+      display_cols <- c("term", "term_label", "n_omics", "combined_pvalue", "combined_padj")
+      display_cols <- intersect(display_cols, colnames(sig_combined))
+
+      # If term_label doesn't exist, use term
+      if (!"term_label" %in% display_cols && "term" %in% display_cols) {
+        sig_combined$term_label <- sig_combined$term
+        display_cols <- c("term_label", "n_omics", "combined_pvalue", "combined_padj")
+      }
+
+      print(htmltools::tagList(DT::datatable(sig_combined[, display_cols],
+        caption = "Top Combined Multi-Omics Enriched Pathways",
+        rownames = FALSE,
+        extensions = 'Buttons',
+        options = list(
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+          scrollX = TRUE,
+          pageLength = 20
+        )) %>% DT::formatSignif(columns = grep("pvalue|padj", colnames(sig_combined)), digits = 4)))
+    } else {
+      cat("No significantly enriched pathways found across multiple omics (padj < 0.1).\n")
+    }
+
+    # Display combined enrichment plot if available
+    combined_plot <- file.path(output_dir, "plots", "combined_enrichment.png")
+    if (file.exists(combined_plot)) {
+      cat("\n\n")
+      knitr::include_graphics(combined_plot)
+    }
   } else {
-    cat("No significantly enriched pathways found across multiple omics.\n")
+    cat("No enrichment results in combined analysis.\n")
   }
 } else {
   cat("Combined enrichment analysis was not performed.\n")
@@ -578,7 +845,16 @@ methods_df <- data.frame(
     paste(config$integration$methods, collapse = ", ")
   )
 )
-kable(methods_df, caption = "Analysis Configuration")
+DT::datatable(methods_df,
+  caption = "Analysis Configuration",
+  rownames = FALSE,
+  extensions = 'Buttons',
+  options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    scrollX = TRUE,
+    paging = FALSE
+  ))
 ```
 
 ## Feature Selection Settings
@@ -598,7 +874,16 @@ for (omic in c("transcriptomics", "proteomics", "metabolomics")) {
 }
 if (length(fs_settings) > 0) {
   fs_df <- do.call(rbind, fs_settings)
-  kable(fs_df, caption = "Feature Selection Settings per Omics")
+  DT::datatable(fs_df,
+    caption = "Feature Selection Settings per Omics",
+    rownames = FALSE,
+    extensions = 'Buttons',
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+      scrollX = TRUE,
+      paging = FALSE
+    ))
 }
 ```
 

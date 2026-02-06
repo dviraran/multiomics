@@ -268,11 +268,38 @@ process_matrix_from_df <- function(df, valid_samples = NULL) {
     feature_ids <- feature_ids[valid_id_idx]
   }
 
-  # Handle duplicates
+  # Handle duplicates using keep_max_mean strategy (from resolve_duplicates in R/04_harmonize.R)
   if (any(duplicated(feature_ids))) {
     n_dup <- sum(duplicated(feature_ids))
-    log_message("  Warning: Found ", n_dup, " duplicate feature IDs. Making unique.")
-    feature_ids <- make.unique(feature_ids)
+    log_message("  Warning: Found ", n_dup, " duplicate feature IDs.")
+    log_message("  Resolving duplicates using 'keep_max_mean' strategy...")
+
+    # Get unique IDs
+    unique_ids <- unique(feature_ids)
+    result_mat <- matrix(
+      NA,
+      nrow = length(unique_ids),
+      ncol = ncol(mat),
+      dimnames = list(unique_ids, colnames(mat))
+    )
+
+    # For each unique ID, keep the row with highest mean value
+    for (uid in unique_ids) {
+      idx <- which(feature_ids == uid)
+      if (length(idx) == 1) {
+        result_mat[uid, ] <- mat[idx, ]
+      } else {
+        # Multiple rows - keep the one with max mean
+        sub_mat <- mat[idx, , drop = FALSE]
+        row_means <- rowMeans(sub_mat, na.rm = TRUE)
+        best_idx <- which.max(row_means)
+        result_mat[uid, ] <- sub_mat[best_idx, ]
+      }
+    }
+
+    mat <- result_mat
+    feature_ids <- unique_ids
+    log_message("  Resolved to ", length(feature_ids), " unique features")
   }
 
   # Filter columns

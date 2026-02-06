@@ -57,3 +57,22 @@ Thumbs.db
 
 # Logs
 *.log
+
+# MS-Helios files
+MS-Helios_*.txt
+ms_helios.zip
+ms_helios_tmp/
+*.helios
+
+# Debug and diagnostic scripts
+debug_*.R
+diagnostic*.R
+install_*.R
+
+# Test outputs
+test_output/
+test_output_hist/
+outputs/
+
+# Debug images
+debug_*.png

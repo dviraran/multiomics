@@ -326,7 +326,31 @@ create_diablo_plots <- function(diablo_model, diablo_results, metadata,
     error = function(e) log_message("Failed to create circos plot: ", e$message)
   )
 
-  # 5. Enrichment on Loadings
+  # 5. CIM (Clustered Image Map) plot
+  tryCatch(
+    {
+      cim_file <- file.path(config$output$output_dir, "plots", "diablo_cim.png")
+
+      # Use png device directly as cim plots to device
+      png(cim_file, width = 1200, height = 1000, res = 150)
+      mixOmics::cim(diablo_model,
+        comp = 1:2,  # Use first 2 components
+        margins = c(10, 5),
+        row.names = FALSE,  # Hide row names for clarity with many features
+        col.names = TRUE,   # Show sample names
+        title = "DIABLO: Clustered Image Map (CIM)",
+        legend = TRUE,
+        color = colorRampPalette(c("blue", "white", "red"))(100),
+        cutoff = 0.5  # Only show features with loading > 0.5
+      )
+      dev.off()
+
+      log_message("Saved CIM plot to ", cim_file)
+    },
+    error = function(e) log_message("Failed to create CIM plot: ", e$message)
+  )
+
+  # 6. Enrichment on Loadings
   tryCatch(
     {
       run_diablo_enrichment(diablo_results, config)

@@ -327,6 +327,25 @@ generate_all_commentary <- function(figures_tbl,
   backend <- config$commentary$backend %||% "none"
   log_message("Using commentary backend: ", backend)
 
+  # Warn about configuration if using AI backend
+  if (backend == "claude" && Sys.getenv("ANTHROPIC_API_KEY") == "") {
+    log_message("WARNING: backend is 'claude' but ANTHROPIC_API_KEY is not set.")
+    log_message("  Set it with: Sys.setenv(ANTHROPIC_API_KEY = 'your-key')")
+    log_message("  Will use deterministic fallback commentary if API calls fail.")
+  }
+
+  if (backend == "openai" && Sys.getenv("OPENAI_API_KEY") == "") {
+    log_message("WARNING: backend is 'openai' but OPENAI_API_KEY is not set.")
+    log_message("  Set it with: Sys.setenv(OPENAI_API_KEY = 'your-key')")
+    log_message("  Will use deterministic fallback commentary if API calls fail.")
+  }
+
+  if (backend == "none") {
+    log_message("INFO: backend is 'none' - using deterministic commentary.")
+    log_message("  To use AI commentary, set commentary.backend to 'claude' or 'openai' in config.yml")
+    log_message("  and ensure the corresponding API key is set as an environment variable.")
+  }
+
   # Generate commentary for each figure
   commentary_list <- list()
 
@@ -352,8 +371,9 @@ generate_all_commentary <- function(figures_tbl,
         }
       },
       error = function(e) {
-        log_message("Error generating commentary for ", figure_id, ": ", e$message)
-        create_placeholder_commentary(figure_id, e$message)
+        log_message("  AI backend failed, using deterministic fallback")
+        # IMPORTANT: Fall back to deterministic commentary, not placeholder
+        generate_fallback_commentary(fig, context, mae_data, integration_results, concordance_results, config)
       }
     )
 
@@ -462,17 +482,25 @@ build_figure_context <- function(fig, config, mae_data, integration_results, con
 
 #' Run Claude Vision API for commentary
 run_claude_commentary <- function(fig, context, config, output_dir) {
+  # Pre-flight check: script exists
+  script_path <- "scripts/figure_commentary_claude.py"
+  if (!file.exists(script_path)) {
+    warning("Claude commentary script not found: ", script_path, "\n  Falling back to deterministic commentary.")
+    stop("Script not found: ", script_path)
+  }
+
+  # Pre-flight check: API key
+  if (Sys.getenv("ANTHROPIC_API_KEY") == "") {
+    warning("ANTHROPIC_API_KEY not set. Cannot use Claude API.\n  Falling back to deterministic commentary.")
+    stop("ANTHROPIC_API_KEY environment variable not set")
+  }
+
   # Write context to temp file
   context_file <- tempfile(fileext = ".json")
   write(jsonlite::toJSON(context, auto_unbox = TRUE), context_file)
+  on.exit(unlink(context_file), add = TRUE)
 
   out_file <- file.path(output_dir, paste0(fig$figure_id, "_claude.json"))
-
-  # Find the Python script
-  script_path <- "scripts/figure_commentary_claude.py"
-  if (!file.exists(script_path)) {
-    stop("Claude commentary script not found: ", script_path)
-  }
 
   # Build command
   model <- config$commentary$claude_model %||% "claude-sonnet-4-20250514"
@@ -480,21 +508,45 @@ run_claude_commentary <- function(fig, context, config, output_dir) {
   max_retries <- config$commentary$max_retries %||% 2
 
   cmd <- sprintf(
-    "python3 '%s' --image '%s' --figure_id '%s' --context_json '%s' --out_json '%s' --model '%s' --max_tokens %d --max_retries %d",
+    "python3 '%s' --image '%s' --figure_id '%s' --context_json '%s' --out_json '%s' --model '%s' --max_tokens %d --max_retries %d 2>&1",
     script_path, fig$file_path, fig$figure_id, context_file, out_file, model, max_tokens, max_retries
   )
 
-  result <- system(cmd, intern = TRUE, ignore.stderr = FALSE)
+  log_message("  Calling Claude API for ", fig$figure_id, "...")
+
+  # Execute and capture both stdout and stderr
+  exit_code <- system(cmd, intern = FALSE, ignore.stdout = FALSE, ignore.stderr = FALSE)
+
+  # Check exit code
+  if (exit_code != 0) {
+    warning("Claude commentary script failed with exit code ", exit_code, "\n  Figure: ", fig$figure_id, "\n  Falling back to deterministic commentary.")
+
+    # Try to read the error JSON if it exists
+    if (file.exists(out_file)) {
+      error_json <- tryCatch(jsonlite::fromJSON(out_file), error = function(e) NULL)
+      if (!is.null(error_json) && !is.null(error_json$limitations)) {
+        warning("  Error from Python: ", error_json$limitations)
+      }
+    }
+
+    stop("Python script exited with code ", exit_code)
+  }
 
   # Read and return the generated commentary
   if (file.exists(out_file)) {
-    commentary <- jsonlite::fromJSON(out_file)
+    commentary <- tryCatch(
+      jsonlite::fromJSON(out_file),
+      error = function(e) {
+        warning("Failed to parse Claude output JSON: ", e$message, "\n  Falling back to deterministic commentary.")
+        stop("JSON parse error: ", e$message)
+      }
+    )
   } else {
+    warning("Claude commentary script did not produce output file: ", out_file, "\n  Falling back to deterministic commentary.")
     stop("Claude commentary script did not produce output")
   }
 
-  # Cleanup
-  unlink(context_file)
+  log_message("  ✓ Claude commentary generated successfully")
 
   return(commentary)
 }
@@ -502,17 +554,25 @@ run_claude_commentary <- function(fig, context, config, output_dir) {
 
 #' Run OpenAI Vision API for commentary
 run_openai_commentary <- function(fig, context, config, output_dir) {
+  # Pre-flight check: script exists
+  script_path <- "scripts/figure_commentary_openai.py"
+  if (!file.exists(script_path)) {
+    warning("OpenAI commentary script not found: ", script_path, "\n  Falling back to deterministic commentary.")
+    stop("Script not found: ", script_path)
+  }
+
+  # Pre-flight check: API key
+  if (Sys.getenv("OPENAI_API_KEY") == "") {
+    warning("OPENAI_API_KEY not set. Cannot use OpenAI API.\n  Falling back to deterministic commentary.")
+    stop("OPENAI_API_KEY environment variable not set")
+  }
+
   # Write context to temp file
   context_file <- tempfile(fileext = ".json")
   write(jsonlite::toJSON(context, auto_unbox = TRUE), context_file)
+  on.exit(unlink(context_file), add = TRUE)
 
   out_file <- file.path(output_dir, paste0(fig$figure_id, "_openai.json"))
-
-  # Find the Python script
-  script_path <- "scripts/figure_commentary_openai.py"
-  if (!file.exists(script_path)) {
-    stop("OpenAI commentary script not found: ", script_path)
-  }
 
   # Build command
   model <- config$commentary$openai_model %||% "gpt-4o"
@@ -520,21 +580,45 @@ run_openai_commentary <- function(fig, context, config, output_dir) {
   max_retries <- config$commentary$max_retries %||% 2
 
   cmd <- sprintf(
-    "python3 '%s' --image '%s' --figure_id '%s' --context_json '%s' --out_json '%s' --model '%s' --max_tokens %d --max_retries %d",
+    "python3 '%s' --image '%s' --figure_id '%s' --context_json '%s' --out_json '%s' --model '%s' --max_tokens %d --max_retries %d 2>&1",
     script_path, fig$file_path, fig$figure_id, context_file, out_file, model, max_tokens, max_retries
   )
 
-  result <- system(cmd, intern = TRUE, ignore.stderr = FALSE)
+  log_message("  Calling OpenAI API for ", fig$figure_id, "...")
+
+  # Execute and capture both stdout and stderr
+  exit_code <- system(cmd, intern = FALSE, ignore.stdout = FALSE, ignore.stderr = FALSE)
+
+  # Check exit code
+  if (exit_code != 0) {
+    warning("OpenAI commentary script failed with exit code ", exit_code, "\n  Figure: ", fig$figure_id, "\n  Falling back to deterministic commentary.")
+
+    # Try to read the error JSON if it exists
+    if (file.exists(out_file)) {
+      error_json <- tryCatch(jsonlite::fromJSON(out_file), error = function(e) NULL)
+      if (!is.null(error_json) && !is.null(error_json$limitations)) {
+        warning("  Error from Python: ", error_json$limitations)
+      }
+    }
+
+    stop("Python script exited with code ", exit_code)
+  }
 
   # Read and return the generated commentary
   if (file.exists(out_file)) {
-    commentary <- jsonlite::fromJSON(out_file)
+    commentary <- tryCatch(
+      jsonlite::fromJSON(out_file),
+      error = function(e) {
+        warning("Failed to parse OpenAI output JSON: ", e$message, "\n  Falling back to deterministic commentary.")
+        stop("JSON parse error: ", e$message)
+      }
+    )
   } else {
+    warning("OpenAI commentary script did not produce output file: ", out_file, "\n  Falling back to deterministic commentary.")
     stop("OpenAI commentary script did not produce output")
   }
 
-  # Cleanup
-  unlink(context_file)
+  log_message("  ✓ OpenAI commentary generated successfully")
 
   return(commentary)
 }

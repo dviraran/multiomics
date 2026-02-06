@@ -277,26 +277,141 @@ harmonize_transcriptomics_ids <- function(rna_data, config, gene_protein_mapping
     }
   }
 
-  # 3. Fallback: Heuristics
-  # Only if still missing logic
+  # 3. Fallback: Heuristics based on organism and ID type
+  organism <- config$global$organism %||% "human"
+
   if (all(is.na(feature_anno$gene_symbol))) {
-    # If practically nothing mapped, check if IDs are themselves symbols?
+    # If practically nothing mapped, check if IDs are themselves symbols
     if (!any(grepl("^ENS", stripped_ids)) && !any(grepl("^WBGene", stripped_ids))) {
       feature_anno$gene_symbol <- stripped_ids
       log_message("IDs appear to be gene symbols, using as-is")
-    } else if (any(grepl("^WBGene", stripped_ids))) {
-      # Last resort org.Ce.eg.db if not using generated mapping
-      # (If gene_protein_mapping was generated, we already tried it. If it was NULL, we failed.)
-      # But maybe it WAS null because generation failed? Keep fallback just in case.
-      log_message("IDs look like WBGene but mapping failed. Trying direct check...")
-      # ... reuse fallback logic or assume IDs are what they are.
-      feature_anno$gene_symbol[is.na(feature_anno$gene_symbol)] <- stripped_ids[is.na(feature_anno$gene_symbol)]
+    } else if (any(grepl("^WBGene", stripped_ids)) && organism == "c_elegans") {
+      # WBGene IDs for C. elegans - try direct org.Ce.eg.db query
+      log_message("WARNING: IDs are WBGene accessions but mapping failed. Attempting direct org.Ce.eg.db query...")
+
+      if (requireNamespace("org.Ce.eg.db", quietly = TRUE)) {
+        tryCatch(
+          {
+            db <- org.Ce.eg.db::org.Ce.eg.db
+            mapped_symbols <- AnnotationDbi::mapIds(
+              db,
+              keys = stripped_ids,
+              column = "SYMBOL",
+              keytype = "WORMBASE",
+              multiVals = "first"
+            )
+            feature_anno$gene_symbol <- mapped_symbols
+            n_mapped <- sum(!is.na(feature_anno$gene_symbol))
+            log_message("  Mapped ", n_mapped, "/", length(stripped_ids), " features via direct org.Ce.eg.db query")
+          },
+          error = function(e) {
+            log_message("  ERROR: Direct org.Ce.eg.db query failed: ", e$message)
+          }
+        )
+      }
+
+      # If still unmapped, leave as NA and warn
+      n_unmapped <- sum(is.na(feature_anno$gene_symbol))
+      if (n_unmapped > 0) {
+        log_message("  WARNING: ", n_unmapped, " WBGene IDs remain unmapped. Enrichment analysis will be limited.")
+        log_message("  Consider providing a mapping file in config or checking org.Ce.eg.db installation.")
+      }
+    } else if (any(grepl("^ENS", stripped_ids))) {
+      # Ensembl IDs - try direct query based on organism
+      log_message("WARNING: IDs are Ensembl accessions but mapping failed. Attempting direct query...")
+
+      org_pkg <- NULL
+      keytype <- "ENSEMBL"
+      if (organism == "human") {
+        org_pkg <- "org.Hs.eg.db"
+      } else if (organism == "mouse") {
+        org_pkg <- "org.Mm.eg.db"
+      } else if (organism == "c_elegans") {
+        # Ensembl IDs for C. elegans are rare but possible
+        org_pkg <- "org.Ce.eg.db"
+        keytype <- "ENSEMBL"
+      }
+
+      if (!is.null(org_pkg) && requireNamespace(org_pkg, quietly = TRUE)) {
+        tryCatch(
+          {
+            db <- get(org_pkg, envir = asNamespace(org_pkg))
+            mapped_symbols <- AnnotationDbi::mapIds(
+              db,
+              keys = stripped_ids,
+              column = "SYMBOL",
+              keytype = keytype,
+              multiVals = "first"
+            )
+            feature_anno$gene_symbol <- mapped_symbols
+            n_mapped <- sum(!is.na(feature_anno$gene_symbol))
+            log_message("  Mapped ", n_mapped, "/", length(stripped_ids), " features via direct ", org_pkg, " query")
+          },
+          error = function(e) {
+            log_message("  ERROR: Direct ", org_pkg, " query failed: ", e$message)
+          }
+        )
+      }
+
+      n_unmapped <- sum(is.na(feature_anno$gene_symbol))
+      if (n_unmapped > 0) {
+        log_message("  WARNING: ", n_unmapped, " Ensembl IDs remain unmapped. Enrichment analysis will be limited.")
+      }
     }
   } else {
-    # Partial mapping handling
+    # Partial mapping handling - try to fill remaining gaps
     missing <- is.na(feature_anno$gene_symbol)
     if (any(missing)) {
-      feature_anno$gene_symbol[missing] <- stripped_ids[missing] # Fallback to ID
+      n_missing <- sum(missing)
+      log_message("  ", n_missing, " features still unmapped after primary mapping")
+
+      missing_ids <- stripped_ids[missing]
+
+      # For WBGene IDs in C. elegans, attempt direct query
+      if (organism == "c_elegans" && any(grepl("^WBGene", missing_ids))) {
+        wb_idx <- grepl("^WBGene", missing_ids)
+        if (requireNamespace("org.Ce.eg.db", quietly = TRUE)) {
+          tryCatch(
+            {
+              db <- org.Ce.eg.db::org.Ce.eg.db
+              mapped_symbols <- AnnotationDbi::mapIds(
+                db,
+                keys = missing_ids[wb_idx],
+                column = "SYMBOL",
+                keytype = "WORMBASE",
+                multiVals = "first"
+              )
+              # Update feature_anno at correct indices
+              missing_indices <- which(missing)
+              feature_anno$gene_symbol[missing_indices[wb_idx]] <- mapped_symbols
+              n_wb_mapped <- sum(!is.na(mapped_symbols))
+              log_message("  Mapped ", n_wb_mapped, " additional WBGene IDs via org.Ce.eg.db")
+            },
+            error = function(e) {
+              log_message("  ERROR: org.Ce.eg.db query failed: ", e$message)
+            }
+          )
+        }
+      }
+
+      # Re-check what's still missing
+      still_missing <- is.na(feature_anno$gene_symbol)
+      if (any(still_missing)) {
+        missing_ids_final <- stripped_ids[still_missing]
+        are_accessions <- grepl("^(ENS|WBGene)", missing_ids_final)
+
+        # Only use IDs as symbols if they don't look like database accessions
+        if (any(!are_accessions)) {
+          feature_anno$gene_symbol[still_missing][!are_accessions] <- missing_ids_final[!are_accessions]
+          log_message("  Used ", sum(!are_accessions), " non-accession IDs as gene symbols")
+        }
+
+        # For remaining accessions, leave as NA and warn
+        if (any(are_accessions)) {
+          log_message("  WARNING: ", sum(are_accessions), " database accessions remain unmapped (left as NA)")
+          log_message("  These features will be excluded from enrichment analysis")
+        }
+      }
     }
   }
 
