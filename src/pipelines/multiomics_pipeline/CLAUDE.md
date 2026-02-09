@@ -45,7 +45,6 @@ config.yml → config
   → mofa_results (06) | diablo_results (07) | snf_results (08) [parallel branches]
   → concordance_results (09) + consensus_results (09b) + stability_results (09c)
   → enrichment_results (10) → multigsea + pathview (13, 15)
-  → ms_helios_results (12, optional)
   → commentary (11, AI-powered figure captions)
   → report (analysis_report.Rmd → HTML)
 ```
@@ -70,7 +69,6 @@ Files are numbered by execution order. Each file contains functions called by ta
 - `09c_stability_analysis.R` — Bootstrap resampling validation
 - `10_enrichment.R` — Pathway enrichment (ORA, GSEA, fgsea), Fisher p-value combination
 - `11_commentary.R` — AI figure captions (Claude Vision, GPT-4 Vision, or deterministic fallback)
-- `12_ms_helios.R` — Circos visualization via external `src/tools/MS-Helios.jar`
 - `13_multigsea_plots.R` — MultiGSEA bubble plots and heatmaps
 - `15_kegg_pathview.R` — KEGG pathway diagrams with fold-change overlays
 

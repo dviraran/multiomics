@@ -373,14 +373,6 @@ list(
   ),
 
   # ---------------------------------------------------------------------------
-  # MS-Helios Visualization (NEW)
-  # ---------------------------------------------------------------------------
-  tar_target(
-    name = ms_helios_results,
-    command = run_ms_helios(mae_data, config)
-  ),
-
-  # ---------------------------------------------------------------------------
   # Figure Commentary Generation
   # ---------------------------------------------------------------------------
 
@@ -472,7 +464,7 @@ list(
   tar_render(
     name = report,
     path = "reports/analysis_report.Rmd",
-    output_dir = file.path("outputs", "report"),
+    output_dir = file.path(config$output$output_dir, "report"),
     params = list(
       config = config,
       mae_data = mae_data,

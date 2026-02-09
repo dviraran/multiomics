@@ -86,6 +86,7 @@ integration:
   methods:
   - DIABLO
   - spls
+  - MOFA2
   mofa2:
     num_factors: 10
     convergence_mode: fast
@@ -104,16 +105,6 @@ integration:
     ncomp: 3
     keepX: 50
     keepY: 50
-ms_helios:
-  run_ms_helios: no
-  compute_links: yes
-  tracks:
-    transcriptomics:
-      scale: zscore
-    proteomics:
-      scale: zscore
-    metabolomics:
-      cluster: yes
 enrichment:
   run_enrichment: yes
   methods: gsea
