@@ -1,0 +1,19 @@
+## This can be used to reproduce the metaboanalyst_env in order to run it on a diff. computer
+## To reproduce run: conda env create -f metaboanalyst_env.yml
+name: metaboanalyst_env
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - r-metaboanalyst
+  - r-irkernel
+  - jupyterlab
+  - r-tarchetypes
+  - r-targets
+  - r-ggrepel
+  - r-fdrtool
+  - r-quarto
+  - r-ranger
+  - r-vip
+prefix: /home/ozsol/miniconda3/envs/metaboanalyst_env

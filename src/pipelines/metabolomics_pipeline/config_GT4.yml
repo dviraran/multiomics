@@ -1,0 +1,57 @@
+# config_GT4.yml — GT4 genotype (2024 vs 2013)
+
+input:
+  feature_matrix: "/home/ozsol/MultiOmics_Projects/MultiOmics_Projects/2025_06_Yonatan_Sharabi/Results/Metabolomics/01.Lab_res/GT4_flt.level1.txt"
+  has_group_row: true
+  annotation_columns:
+    - Molecule
+    - HMDB
+  metadata: ~
+  sample_id_column: "SampleName"
+
+design:
+  condition_column: "condition"
+  contrasts: "GT4_2024 - GT4_2013"
+  reference_level: "GT4_2013"
+
+normalization:
+  method: "metaboanalyst"
+  row_norm:   "SumNorm"
+  trans_norm: "LogNorm"
+  scale_norm: "MeanCenter"
+  pseudocount: 1
+
+qc:
+  run_pca: true
+  run_correlation: true
+  run_sample_heatmap: true
+  top_n_variable: 50
+
+differential:
+  method: "t_test"
+  adj_pvalue_threshold: 0.05
+  log2fc_threshold: 1
+
+rf:
+  run_rf: true
+  n_trees: 500
+  importance: "permutation"
+  top_n: 20
+  seed: 1234
+
+enrichment:
+  run_enrichment: true
+  mapping_file: "/mnt/c/Users/ozsol/Technion/MultiOmicsCenter - Documents/ref_genomes/pathways/smpdb/HMDB2kegg_cpd.Jan2026.v2.txt"
+  gmt_file: ["/mnt/c/Users/ozsol/Technion/MultiOmicsCenter - Documents/Projects/2025_06_Yonatan_Sharabi/Results/Metabolomics/03.Analysis/kegg_legionella_compound_pathway.gmt","/mnt/c/Users/ozsol/Technion/MultiOmicsCenter - Documents/Projects/2025_06_Yonatan_Sharabi/Results/Metabolomics/03.Analysis/smpdb_metabolites_pathway.gmt"]
+  libraries: []
+
+plsda:
+  run_plsda: true
+  vip_top_n: 15
+  colors: ["#E41A1C", "#377EB8"]
+
+output:
+  output_dir: "outputs/GT4"
+  fig_width: 10
+  fig_height: 8
+  plot_dpi: 300
