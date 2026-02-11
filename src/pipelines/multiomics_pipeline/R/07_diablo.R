@@ -76,6 +76,9 @@ run_diablo_integration <- function(feature_data, config) {
   ncomp <- max(ncomp, 1)
 
   log_message("Running DIABLO with ", ncomp, " components, design: ", design_type)
+  log_message("  Number of groups: ", length(levels(Y)))
+  log_message("  Group labels: ", paste(levels(Y), collapse = ", "))
+  log_message("  Group sizes: ", paste(table(Y), collapse = ", "))
 
   # Run DIABLO
   diablo_result <- tryCatch(
@@ -88,7 +91,8 @@ run_diablo_integration <- function(feature_data, config) {
       )
     },
     error = function(e) {
-      log_message("Error in DIABLO: ", e$message)
+      log_message("Error in DIABLO training: ", e$message)
+      log_message("  This may be due to: insufficient samples, low variance features, or incompatible data")
       return(NULL)
     }
   )
@@ -97,7 +101,7 @@ run_diablo_integration <- function(feature_data, config) {
     return(NULL)
   }
 
-  log_message("DIABLO training complete")
+  log_message("DIABLO training complete successfully")
 
   # Extract and save results
   diablo_results <- extract_diablo_results(diablo_result, config)
@@ -150,6 +154,7 @@ extract_diablo_results <- function(diablo_model, config) {
 
   # Sample scores per block
   variates <- diablo_model$variates
+  log_message("  Extracted variates for ", length(variates) - 1, " blocks")
 
   # Feature loadings per block
   loadings <- diablo_model$loadings
@@ -160,6 +165,7 @@ extract_diablo_results <- function(diablo_model, config) {
     if (block == "Y") next
     load_mat <- loadings[[block]]
     selected_vars[[block]] <- rownames(load_mat)[rowSums(load_mat != 0) > 0]
+    log_message("  ", block, ": ", length(selected_vars[[block]]), " features selected")
   }
 
   # Save sample scores

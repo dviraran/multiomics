@@ -12,12 +12,19 @@ suppressPackageStartupMessages({
     library(tidyverse)
     library(targets)
     library(mixOmics)
+    library(yaml)
 })
 
 # Set working directory to project root if needed
 # (Adjust this path if running interactively from elsewhere)
 if (dir.exists("src/pipelines/multiomics_pipeline")) {
     setwd("src/pipelines/multiomics_pipeline")
+}
+
+# Load config to get output directory
+config <- yaml::read_yaml("config.yml")
+if (is.null(config$output$output_dir)) {
+    config$output$output_dir <- "outputs"
 }
 
 cat("================================================================================\n")
@@ -146,5 +153,6 @@ if (!is.null(diablo_res$results$performance)) {
 
 cat("\n================================================================================\n")
 cat("Interpretation Tip: High importance features in differnet layers often\n")
-cat("biologically interact. Check 'outputs/plots/diablo_circos.png' to see connections.\n")
+circos_path <- file.path(config$output$output_dir, "plots", "diablo_circos.png")
+cat(sprintf("biologically interact. Check '%s' to see connections.\n", circos_path))
 cat("================================================================================\n")

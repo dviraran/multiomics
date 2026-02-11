@@ -177,7 +177,7 @@ rna_protein_correlation <- function(mae_data, config) {
             cols_to_keep <- c("gene_symbol", "log2FC")
             if (!is.null(padj_col)) cols_to_keep <- c(cols_to_keep, padj_col)
 
-            prot_de_clean <- prot_de[!is.null(prot_de$gene_symbol) & !is.na(prot_de$gene_symbol), cols_to_keep, drop = FALSE]
+            prot_de_clean <- prot_de[!is.na(prot_de$gene_symbol), cols_to_keep, drop = FALSE]
 
             # Normalize names
             if (!is.null(padj_col)) {
@@ -260,7 +260,7 @@ rna_protein_correlation <- function(mae_data, config) {
                     ggplot2::geom_hline(yintercept = 0, color = "gray90") +
                     # Plot non-sig first (bottom layer), then others
                     ggplot2::geom_point(ggplot2::aes(color = category), alpha = 0.6, size = 1.5) +
-                    ggplot2::geom_smooth(method = "lm", color = "black", linetype = "dashed", se = FALSE, size = 0.5) +
+                    ggplot2::geom_smooth(method = "lm", color = "black", linetype = "dashed", se = FALSE, linewidth = 0.5) +
                     ggplot2::scale_color_manual(values = custom_colors) +
                     ggplot2::theme_minimal() +
                     ggplot2::labs(
@@ -300,20 +300,34 @@ rna_protein_correlation <- function(mae_data, config) {
                     )
                 ggplot2::ggsave(te_hist_path, p_hist, width = 8, height = 6)
 
-                # Plot 2: TE Scatter Plot (RNA vs Protein colored by TE)
+                # Plot 2: TE Scatter Plot (RNA log2FC vs Protein log2FC, colored by TE)
+                # Points above identity line = higher protein FC => positive TE (red)
+                # Points below identity line = lower protein FC => negative TE (blue)
                 te_scatter_path <- file.path(config$output$output_dir, "plots", "translation_efficiency_scatter.png")
+
+                te_cor <- cor(de_merged$rna_log2FC, de_merged$protein_log2FC, use = "complete.obs")
+                te_subtitle <- paste0(
+                    "r = ", round(te_cor, 3),
+                    " | Red = protein > RNA (high TE), Blue = protein < RNA (low TE)"
+                )
+
                 p_scatter <- ggplot2::ggplot(de_merged, ggplot2::aes(x = rna_log2FC, y = protein_log2FC, color = te_log2FC)) +
+                    ggplot2::geom_hline(yintercept = 0, color = "gray90") +
+                    ggplot2::geom_vline(xintercept = 0, color = "gray90") +
                     ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-                    ggplot2::geom_point(alpha = 0.8, size = 1.5) +
-                    ggplot2::scale_color_gradient2(low = "blue", mid = "grey90", high = "red", midpoint = 0, name = "log2(TE)") +
+                    ggplot2::geom_point(alpha = 0.7, size = 1.5) +
+                    ggplot2::scale_color_gradient2(
+                        low = "blue", mid = "grey90", high = "red",
+                        midpoint = 0, name = "log2(TE)\n(Prot FC - RNA FC)"
+                    ) +
                     ggplot2::theme_minimal() +
                     ggplot2::labs(
-                        title = "Translation Efficiency: RNA vs Protein Concordance",
-                        subtitle = "Color represents change in Translation Efficiency",
+                        title = "Translation Efficiency: RNA vs Protein log2FC",
+                        subtitle = te_subtitle,
                         x = "RNA log2 Fold Change",
                         y = "Protein log2 Fold Change"
                     )
-                ggplot2::ggsave(te_scatter_path, p_scatter, width = 8, height = 7)
+                ggplot2::ggsave(te_scatter_path, p_scatter, width = 8, height = 7, dpi = 300)
             }
         }
     }

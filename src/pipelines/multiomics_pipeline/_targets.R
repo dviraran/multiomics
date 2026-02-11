@@ -78,6 +78,27 @@ required_packages <- c(
 library(targets)
 library(tarchetypes)
 
+# =============================================================================
+# Configure reticulate Python for MOFA2
+# =============================================================================
+# MOFA2 requires the mofapy2 Python package via reticulate. When running inside
+# a conda environment (e.g. mofa2_env), reticulate may not auto-discover the
+# correct Python. We detect and set it here before any MOFA2 code is loaded.
+if (Sys.getenv("RETICULATE_PYTHON") == "") {
+  # Check if we're in a conda env with mofapy2
+  conda_prefix <- Sys.getenv("CONDA_PREFIX")
+  if (nzchar(conda_prefix)) {
+    conda_python <- file.path(conda_prefix, "bin", "python")
+    if (file.exists(conda_python)) {
+      Sys.setenv(RETICULATE_PYTHON = conda_python)
+    }
+  }
+}
+if (nzchar(Sys.getenv("RETICULATE_PYTHON"))) {
+  suppressMessages(requireNamespace("reticulate", quietly = TRUE))
+  reticulate::use_python(Sys.getenv("RETICULATE_PYTHON"), required = TRUE)
+}
+
 # Source all R functions
 # r_files <- sort(list.files("R", pattern = "\\.[Rr]$", full.names = TRUE, recursive = TRUE))#
 # invisible(lapply(r_files, source))

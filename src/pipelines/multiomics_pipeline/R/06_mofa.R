@@ -30,12 +30,24 @@ run_mofa2_integration <- function(feature_data, config) {
 
   # Prepare data for MOFA2
   # MOFA2 expects features x samples matrices
+  # Ensure all matrices share the same samples in the same order
+  common_samples <- Reduce(intersect, lapply(matrices, colnames))
+  if (length(common_samples) == 0) {
+    log_message("No common samples across omics layers for MOFA2.")
+    return(NULL)
+  }
+  matrices <- lapply(matrices, function(m) m[, common_samples, drop = FALSE])
+
   log_message("Preparing data for MOFA2...")
+  log_message("  Number of omics layers: ", length(matrices))
+  log_message("  Number of samples: ", length(common_samples))
 
   # Create MOFA object from matrices
   mofa_data <- list()
   for (omic in names(matrices)) {
     mat <- matrices[[omic]]
+    log_message("  ", omic, ": ", nrow(mat), " features x ", ncol(mat), " samples")
+
     # Center features (MOFA2 expects centered data for Gaussian likelihood)
     mat_centered <- t(scale(t(mat), center = TRUE, scale = FALSE))
     # Handle remaining NAs
@@ -81,22 +93,27 @@ run_mofa2_integration <- function(feature_data, config) {
 
   # Run MOFA
   log_message("Training MOFA2 model with ", model_opts$num_factors, " factors...")
+  log_message("  Convergence mode: ", convergence_mode)
+  log_message("  Max iterations: ", train_opts$iter)
+  log_message("  Random seed: ", seed)
+
   mofa_trained <- tryCatch({
     MOFA2::run_mofa(mofa_obj, use_basilisk = FALSE)
   }, error = function(e) {
-    log_message("Error training MOFA model: ", e$message)
+    log_message("Error training MOFA model without basilisk: ", e$message)
+    log_message("  Retrying with basilisk environment...")
     # Try with basilisk
     tryCatch({
       MOFA2::run_mofa(mofa_obj, use_basilisk = TRUE)
     }, error = function(e2) {
-      log_message("MOFA training failed: ", e2$message)
+      log_message("MOFA training failed with basilisk: ", e2$message)
       return(NULL)
     })
   })
 
   if (is.null(mofa_trained)) return(NULL)
 
-  log_message("MOFA2 training complete")
+  log_message("MOFA2 training complete successfully")
 
   # Extract results
   mofa_results <- extract_mofa_results(mofa_trained, metadata, config)
@@ -117,9 +134,11 @@ extract_mofa_results <- function(mofa_model, metadata, config) {
 
   # Factor values (samples x factors)
   factors <- MOFA2::get_factors(mofa_model)[[1]]
+  log_message("  Extracted factors: ", nrow(factors), " samples x ", ncol(factors), " factors")
 
   # Weights per view (features x factors per view)
   weights <- MOFA2::get_weights(mofa_model)
+  log_message("  Extracted weights for ", length(weights), " views")
 
   # Variance explained
   var_explained <- MOFA2::get_variance_explained(mofa_model)
@@ -129,6 +148,10 @@ extract_mofa_results <- function(mofa_model, metadata, config) {
 
   # Total per view
   r2_total <- var_explained$r2_total[[1]]
+  log_message("  Total variance explained across views:")
+  for (view_name in names(r2_total)) {
+    log_message("    ", view_name, ": ", round(r2_total[[view_name]], 2), "%")
+  }
 
   # Save factor values
   factor_df <- as.data.frame(factors)

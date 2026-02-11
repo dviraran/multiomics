@@ -88,7 +88,7 @@ load_transcriptomics <- function(config, valid_samples = NULL) {
   log_message("Loading transcriptomics data...")
   tc <- config$transcriptomics
 
-  if (tc$mode == "preprocessed") {
+  if ((tc$mode %||% "preprocessed") == "preprocessed") {
     return(load_preprocessed_omics(tc$preprocessed, "transcriptomics", valid_samples))
   }
 
@@ -133,7 +133,7 @@ load_proteomics <- function(config, valid_samples = NULL) {
   log_message("Loading proteomics data...")
   pc <- config$proteomics
 
-  if (pc$mode == "preprocessed") {
+  if ((pc$mode %||% "preprocessed") == "preprocessed") {
     return(load_preprocessed_omics(pc$preprocessed, "proteomics", valid_samples))
   }
 
@@ -174,7 +174,7 @@ load_metabolomics <- function(config, valid_samples = NULL) {
   log_message("Loading metabolomics data...")
   mc <- config$metabolomics
 
-  if (mc$mode == "preprocessed") {
+  if ((mc$mode %||% "preprocessed") == "preprocessed") {
     return(load_preprocessed_omics(mc$preprocessed, "metabolomics", valid_samples))
   }
 
@@ -268,6 +268,14 @@ process_matrix_from_df <- function(df, valid_samples = NULL) {
     feature_ids <- feature_ids[valid_id_idx]
   }
 
+  # Convert data to matrix early (needed for duplicate resolution)
+  # Extract numeric data columns (all except first column which is feature IDs)
+  data_cols <- df[, -1, drop = FALSE]
+
+  # Convert to numeric matrix
+  temp_mat <- as.matrix(data_cols)
+  storage.mode(temp_mat) <- "numeric"
+
   # Handle duplicates using keep_max_mean strategy (from resolve_duplicates in R/04_harmonize.R)
   if (any(duplicated(feature_ids))) {
     n_dup <- sum(duplicated(feature_ids))
@@ -279,31 +287,31 @@ process_matrix_from_df <- function(df, valid_samples = NULL) {
     result_mat <- matrix(
       NA,
       nrow = length(unique_ids),
-      ncol = ncol(mat),
-      dimnames = list(unique_ids, colnames(mat))
+      ncol = ncol(temp_mat),
+      dimnames = list(unique_ids, colnames(temp_mat))
     )
 
     # For each unique ID, keep the row with highest mean value
     for (uid in unique_ids) {
       idx <- which(feature_ids == uid)
       if (length(idx) == 1) {
-        result_mat[uid, ] <- mat[idx, ]
+        result_mat[uid, ] <- temp_mat[idx, ]
       } else {
         # Multiple rows - keep the one with max mean
-        sub_mat <- mat[idx, , drop = FALSE]
+        sub_mat <- temp_mat[idx, , drop = FALSE]
         row_means <- rowMeans(sub_mat, na.rm = TRUE)
         best_idx <- which.max(row_means)
         result_mat[uid, ] <- sub_mat[best_idx, ]
       }
     }
 
-    mat <- result_mat
+    temp_mat <- result_mat
     feature_ids <- unique_ids
     log_message("  Resolved to ", length(feature_ids), " unique features")
   }
 
-  # Filter columns
-  raw_cols <- colnames(df)[-1]
+  # Filter columns based on valid samples
+  raw_cols <- colnames(temp_mat)
   sanitized_cols <- sanitize_names(raw_cols)
 
   if (!is.null(valid_samples)) {
@@ -313,16 +321,16 @@ process_matrix_from_df <- function(df, valid_samples = NULL) {
     }
     log_message("  Matched ", length(keep_idx), " sample columns out of ", length(raw_cols))
 
-    # +1 because df has ID in col 1
-    mat <- as.matrix(df[, keep_idx + 1])
+    # Subset temp_mat to keep only matched samples
+    mat <- temp_mat[, keep_idx, drop = FALSE]
     colnames(mat) <- sanitized_cols[keep_idx]
   } else {
-    mat <- as.matrix(df[, -1])
+    mat <- temp_mat
     colnames(mat) <- sanitized_cols
   }
 
+  # Set row names to feature IDs
   rownames(mat) <- feature_ids
-  storage.mode(mat) <- "numeric"
 
   return(mat)
 }

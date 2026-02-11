@@ -443,15 +443,18 @@ run_gene_enrichment_legacy <- function(de_table, gene_col, gmt, omic_name, confi
       log_message("    OrgDb for ", organism_name, " not available. Skipping clusterProfiler.")
     } else {
       # explicit mapping to ENTREZID to robustify
-      tryCatch(
-        {
-          gene_map <- clusterProfiler::bitr(sig_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db)
-          universe_map <- clusterProfiler::bitr(all_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db)
-        },
+      gene_map <- tryCatch(
+        clusterProfiler::bitr(sig_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db),
         error = function(e) {
-          log_message("    ID mapping failed: ", e$message)
-          gene_map <- NULL
-          universe_map <- NULL
+          log_message("    ID mapping failed for sig genes: ", e$message)
+          NULL
+        }
+      )
+      universe_map <- tryCatch(
+        clusterProfiler::bitr(all_genes, fromType = key_type, toType = "ENTREZID", OrgDb = org_db),
+        error = function(e) {
+          log_message("    ID mapping failed for universe: ", e$message)
+          NULL
         }
       )
 

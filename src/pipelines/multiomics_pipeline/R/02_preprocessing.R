@@ -415,7 +415,7 @@ preprocess_metabolomics <- function(metab_data, metadata, config) {
   if (metab_data$mode == "preprocessed") {
     log_message("Using preprocessed metabolomics data")
     mat <- metab_data$matrix
-    da_table <- metab_data$da_table
+    da_table <- standardize_de_table(metab_data$da_table, config)
 
     # If DA table is missing, run Limma
     if (is.null(da_table)) {

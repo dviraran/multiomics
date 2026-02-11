@@ -37,8 +37,13 @@
 #' @param config Configuration list
 #' @param output_dir Directory to save the mapping file
 #' @return Data frame with columns: gene_id, entrez_id, uniprot_id, gene_symbol
-generate_id_mapping <- function(config, output_dir = "outputs/tables") {
+generate_id_mapping <- function(config, output_dir = NULL) {
   log_message("=== Generating Centralized ID Mapping ===")
+
+  # Use config's output_dir if not explicitly provided
+  if (is.null(output_dir)) {
+    output_dir <- file.path(config$output$output_dir, "tables")
+  }
 
   # Check if mapping file is provided in config (e.g., transcriptomics or proteomics mapping)
   # The user request implies checking global or specific configs.
